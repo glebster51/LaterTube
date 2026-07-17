@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-i18n="pageTitle">LaterTube — watch later</title>
+  <link rel="stylesheet" href="list.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="https://www.youtube.com/" data-i18n-title="openYouTube" title="Open YouTube">
+      <img src="assets/icon-48.png" alt="">
+      <span>LaterTube</span>
+    </a>
+    <div class="header-actions">
+      <label class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m20.9 19.5-5.2-5.2a7 7 0 1 0-1.4 1.4l5.2 5.2 1.4-1.4ZM5 10.5a5.5 5.5 0 1 1 11 0 5.5 5.5 0 0 1-11 0Z"/></svg>
+        <input id="search" type="search" data-i18n-placeholder="searchPlaceholder" placeholder="Search my list" autocomplete="off">
+      </label>
+      <button id="export-list" class="secondary-button" type="button" data-i18n="exportList">Export</button>
+      <button id="import-list" class="secondary-button" type="button" data-i18n="importList">Import</button>
+      <input id="import-file" type="file" accept=".txt,.json,text/plain,application/json" hidden>
+      <button id="clear-all" class="secondary-button" type="button" data-i18n="clearList">Clear list</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="list-heading">
+      <div>
+        <h2 data-i18n="watchLaterHeading">Watch later</h2>
+        <p id="counter"></p>
+      </div>
+      <div class="list-controls">
+        <label class="toggle" data-i18n-title="removeOnPlayTitle" title="Remove a video from the list when opening it">
+          <input id="remove-on-play" type="checkbox">
+          <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+          <span class="toggle-label" data-i18n="removeOnPlayLabel">Remove on play</span>
+        </label>
+        <select id="sort" data-i18n-aria-label="sortLabel" aria-label="Sort">
+          <option value="added-newest" data-i18n="sortAddedNewest">Added: newest first</option>
+          <option value="added-oldest" data-i18n="sortAddedOldest">Added: oldest first</option>
+          <option value="video-newest" data-i18n="sortVideoNewest">Video date: newest first</option>
+          <option value="video-oldest" data-i18n="sortVideoOldest">Video date: oldest first</option>
+          <option value="views-most" data-i18n="sortViewsMost">Views: most first</option>
+          <option value="views-least" data-i18n="sortViewsLeast">Views: least first</option>
+          <option value="random" data-i18n="sortRandom">Random order</option>
+          <option value="title" data-i18n="sortTitle">By title</option>
+          <option value="shortest" data-i18n="sortShortest">Shortest first</option>
+          <option value="longest" data-i18n="sortLongest">Longest first</option>
+        </select>
+      </div>
+    </div>
+
+    <section id="grid" class="video-grid" aria-live="polite"></section>
+
+    <section id="empty" class="empty" hidden>
+      <div class="empty-icon">▶</div>
+      <h2 data-i18n="emptyHeading">Your list is empty</h2>
+      <p data-i18n="emptyText">Add a video with the Watch later button on YouTube, or collect open tabs from the extension icon's context menu.</p>
+      <a href="https://www.youtube.com/" data-i18n="goToYouTube">Go to YouTube</a>
+    </section>
+  </main>
+
+  <footer class="page-footer">
+    <span data-i18n="freeNoAds">LaterTube · Free and ad-free</span>
+    <button id="open-support" class="support-link" type="button" data-i18n="sayThanks">♥ Say thanks</button>
+  </footer>
+
+  <dialog id="support-dialog" class="support-dialog" aria-labelledby="support-title">
+    <button id="close-support" class="dialog-close" type="button" data-i18n-aria-label="close" aria-label="Close">×</button>
+    <div class="support-heading">
+      <span class="support-heart" aria-hidden="true">♥</span>
+      <div>
+        <h2 id="support-title" data-i18n="supportTitle">Support LaterTube</h2>
+        <p data-i18n="supportIntro">LaterTube is free and ad-free. If you find it useful, you can send any amount in USDT.</p>
+      </div>
+    </div>
+
+    <div class="wallet-grid">
+      <section class="wallet-card">
+        <div class="wallet-title">
+          <strong>USDT</strong>
+          <span>TRON · TRC20</span>
+        </div>
+        <img class="wallet-qr" src="assets/support-usdt-trc20.png" data-i18n-alt="qrTrc20Alt" alt="QR code for the USDT address on the TRON TRC20 network">
+        <code class="wallet-address">TDpsiS1UdowhTqpvW2Ue4KSvBLNyuh1BaC</code>
+        <button class="copy-address secondary-button" type="button" data-address="TDpsiS1UdowhTqpvW2Ue4KSvBLNyuh1BaC" data-i18n="copyAddress">Copy address</button>
+      </section>
+
+      <section class="wallet-card">
+        <div class="wallet-title">
+          <strong>USDT</strong>
+          <span>BNB Smart Chain · BEP20</span>
+        </div>
+        <img class="wallet-qr" src="assets/support-usdt-bep20.png" data-i18n-alt="qrBep20Alt" alt="QR code for the USDT address on the BNB Smart Chain BEP20 network">
+        <code class="wallet-address">0x34cd85643d16ae1ed59c5c3a1f3b2ddb61c0b9e3</code>
+        <button class="copy-address secondary-button" type="button" data-address="0x34cd85643d16ae1ed59c5c3a1f3b2ddb61c0b9e3" data-i18n="copyAddress">Copy address</button>
+      </section>
+    </div>
+
+    <p class="network-warning" data-i18n="networkWarning">Important: when sending, select the network shown on the chosen card. A transfer through another network may be lost. Check the address and wallet fee before confirming.</p>
+    <p id="copy-status" class="copy-status" aria-live="polite"></p>
+    <p class="support-note" data-i18n="supportVoluntary">Support is completely optional and does not unlock additional features.</p>
+  </dialog>
+
+  <template id="card-template">
+    <article class="video-card">
+      <a class="thumbnail-link" target="_blank" rel="noopener">
+        <img class="thumbnail" alt="" loading="lazy">
+        <span class="play-icon">▶</span>
+        <span class="duration" hidden></span>
+        <div class="thumbnail-metadata">
+          <p class="channel"></p>
+          <p class="view-count"></p>
+          <p class="published-date"></p>
+          <p class="added-date"></p>
+        </div>
+      </a>
+      <div class="card-info">
+        <a class="video-title" target="_blank" rel="noopener"></a>
+        <button class="remove-button" type="button" data-i18n-title="removeFromList" data-i18n-aria-label="removeFromList" title="Remove from list" aria-label="Remove from list">×</button>
+      </div>
+    </article>
+  </template>
+
+  <script src="list.js"></script>
+</body>
+</html>

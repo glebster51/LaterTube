@@ -1,0 +1,5 @@
+.agents/
+.codex/
+*.zip
+Screenshots/*.pur
+codex-permission-check.tmp
