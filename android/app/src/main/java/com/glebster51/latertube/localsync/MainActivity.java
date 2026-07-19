@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.graphics.Color;
 import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
@@ -39,6 +40,11 @@ public class MainActivity extends Activity {
         ensureDeviceId();
         processSyncRequest();
         webView = new WebView(this);
+        getWindow().setStatusBarColor(Color.rgb(24, 24, 24));
+        webView.setOnApplyWindowInsetsListener((view, insets) -> {
+            view.setPadding(0, insets.getSystemWindowInsetTop(), 0, insets.getSystemWindowInsetBottom());
+            return insets;
+        });
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(false);
@@ -183,12 +189,17 @@ public class MainActivity extends Activity {
             JSONArray changed = new JSONArray();
             for (int i = 0; i < current.length(); i++) {
                 JSONObject video = current.optJSONObject(i);
-                if (video != null && !id.equals(video.optString("id"))) changed.put(video);
+                if (video == null) continue;
+                if (id.equals(video.optString("id"))) {
+                    boolean pendingDeletion = !video.optBoolean("pendingDeletion");
+                    try { video.put("pendingDeletion", pendingDeletion); } catch (Exception ignored) { }
+                    Set<String> deleted = toSet(pending(PENDING_DELETED));
+                    if (pendingDeletion) deleted.add(id); else deleted.remove(id);
+                    savePending(PENDING_DELETED, new JSONArray(deleted));
+                }
+                changed.put(video);
             }
             saveVideos(changed);
-            Set<String> deleted = toSet(pending(PENDING_DELETED));
-            deleted.add(id);
-            savePending(PENDING_DELETED, new JSONArray(deleted));
         }
     }
 

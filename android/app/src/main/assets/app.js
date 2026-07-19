@@ -8,22 +8,30 @@ sort.addEventListener('change', () => { Android.setSort(sort.value); render(); }
 
 function render() {
   const videos = JSON.parse(Android.getVideos()).sort(compareVideos);
-  summary.textContent = `${videos.length} видео на телефоне`;
+  const activeCount = videos.filter(video => !video.pendingDeletion).length;
+  summary.textContent = `${activeCount} видео на телефоне`;
   empty.hidden = videos.length !== 0;
   list.replaceChildren(...videos.map(video => {
     const card = document.createElement('article');
-    card.className = 'card';
+    card.className = `card${video.pendingDeletion ? ' pending-delete' : video.watched ? ' watched' : ''}`;
+    const preview = document.createElement('div'); preview.className = 'preview';
     const image = document.createElement('img'); image.className = 'thumbnail'; const cached = Android.getThumbnailData(video.id); if (cached) image.src = `data:image/jpeg;base64,${cached}`;
     image.onerror = () => image.style.visibility = 'hidden';
     const content = document.createElement('div');
+    content.className = 'content';
     const title = document.createElement('a'); title.className = 'title'; title.textContent = video.title || 'YouTube video'; title.href = '#';
     title.onclick = event => { event.preventDefault(); Android.openVideo(video.url); };
-    const meta = document.createElement('p'); meta.className = 'meta'; meta.textContent = `${video.channel || 'YouTube'}${video.durationSeconds ? ' · ' + duration(video.durationSeconds) : ''}`;
-    const state = document.createElement('p'); state.className = 'watched'; state.textContent = video.watched ? '✓ Просмотрено' : 'Не просмотрено';
+    const durationLabel = document.createElement('span'); durationLabel.className = 'duration'; durationLabel.textContent = video.durationSeconds ? duration(video.durationSeconds) : ''; durationLabel.hidden = !video.durationSeconds;
     const actions = document.createElement('div'); actions.className = 'actions';
-    const watched = document.createElement('button'); watched.textContent = video.watched ? 'Не просмотрено' : 'Просмотрено'; watched.onclick = () => { Android.toggleWatched(video.id); render(); };
-    const remove = document.createElement('button'); remove.textContent = 'Удалить'; remove.onclick = () => { Android.deleteVideo(video.id); render(); };
-    actions.append(watched, remove); content.append(title, meta, state, actions); card.append(image, content); return card;
+    if (video.pendingDeletion) {
+      const cancel = document.createElement('button'); cancel.className = 'cancel-delete'; cancel.textContent = 'Отменить удаление'; cancel.onclick = () => { Android.deleteVideo(video.id); render(); };
+      actions.append(cancel);
+    } else {
+      const watched = document.createElement('button'); watched.textContent = video.watched ? 'Не просмотрено' : 'Просмотрено'; watched.onclick = () => { Android.toggleWatched(video.id); render(); };
+      const remove = document.createElement('button'); remove.textContent = 'Удалить'; remove.onclick = () => { Android.deleteVideo(video.id); render(); };
+      actions.append(watched, remove);
+    }
+    preview.append(image, durationLabel); content.append(title, actions); card.append(preview, content); return card;
   }));
 }
 function compareVideos(a, b) {
