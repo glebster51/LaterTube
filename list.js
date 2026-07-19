@@ -1,5 +1,6 @@
 const STORAGE_KEY = "watchLaterVideos";
 const REMOVE_ON_PLAY_KEY = "removeOnPlay";
+const NATIVE_HOST_NAME = "com.glebster51.latertube_usb_sync";
 const t = (key, substitutions) => chrome.i18n.getMessage(key, substitutions);
 const uiLanguage = chrome.i18n.getUILanguage();
 const grid = document.querySelector("#grid");
@@ -12,6 +13,8 @@ const exportList = document.querySelector("#export-list");
 const importList = document.querySelector("#import-list");
 const importFile = document.querySelector("#import-file");
 const removeOnPlayToggle = document.querySelector("#remove-on-play");
+const syncPhone = document.querySelector("#sync-phone");
+const syncStatus = document.querySelector("#sync-status");
 const template = document.querySelector("#card-template");
 const supportDialog = document.querySelector("#support-dialog");
 const copyStatus = document.querySelector("#copy-status");
@@ -29,6 +32,7 @@ exportList.addEventListener("click", exportVideos);
 importList.addEventListener("click", () => importFile.click());
 importFile.addEventListener("change", importVideos);
 removeOnPlayToggle.addEventListener("change", saveRemoveOnPlay);
+syncPhone.addEventListener("click", syncWithPhone);
 document.querySelector("#open-support").addEventListener("click", () => supportDialog.showModal());
 document.querySelector("#close-support").addEventListener("click", () => supportDialog.close());
 supportDialog.addEventListener("click", (event) => {
@@ -234,6 +238,44 @@ function handleVideoOpen(id) {
 async function saveRemoveOnPlay() {
   removeOnPlay = removeOnPlayToggle.checked;
   await chrome.storage.local.set({ [REMOVE_ON_PLAY_KEY]: removeOnPlay });
+}
+
+async function syncWithPhone() {
+  syncPhone.disabled = true;
+  syncStatus.textContent = t("syncInProgress");
+
+  try {
+    const result = await chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, {
+      action: "sync",
+      videos
+    });
+    if (!result?.ok) throw new Error(result?.error || "syncFailed");
+
+    const deletedIds = new Set(Array.isArray(result.deletedVideoIds) ? result.deletedVideoIds : []);
+    if (deletedIds.size) {
+      videos = videos.filter((video) => !deletedIds.has(video.id));
+      await chrome.storage.local.set({ [STORAGE_KEY]: videos });
+    }
+
+    const watchedCount = Number(result.watchedCount) || 0;
+    const deletedCount = deletedIds.size;
+    syncStatus.textContent = t("syncSuccess", [String(videos.length), String(watchedCount), String(deletedCount)]);
+    render();
+  } catch (error) {
+    const message = String(error?.message || error || "");
+    syncStatus.textContent = t(nativeErrorMessageKey(message));
+  } finally {
+    syncPhone.disabled = false;
+  }
+}
+
+function nativeErrorMessageKey(message) {
+  if (message.includes("unauthorized")) return "syncUnauthorized";
+  if (message.includes("not found") || message.includes("Native host")) return "syncCompanionMissing";
+  if (message.includes("application is not installed")) return "syncAppMissing";
+  if (message.includes("multiple")) return "syncMultipleDevices";
+  if (message.includes("device")) return "syncNoDevice";
+  return "syncFailed";
 }
 
 function formatDuration(totalSeconds) {

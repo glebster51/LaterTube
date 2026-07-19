@@ -19,6 +19,7 @@
       </label>
       <button id="export-list" class="secondary-button" type="button" data-i18n="exportList">Export</button>
       <button id="import-list" class="secondary-button" type="button" data-i18n="importList">Import</button>
+      <button id="sync-phone" class="secondary-button sync-button" type="button" data-i18n="syncPhone">Sync phone</button>
       <input id="import-file" type="file" accept=".txt,.json,text/plain,application/json" hidden>
       <button id="clear-all" class="secondary-button" type="button" data-i18n="clearList">Clear list</button>
     </div>
@@ -29,6 +30,7 @@
       <div>
         <h2 data-i18n="watchLaterHeading">Watch later</h2>
         <p id="counter"></p>
+        <p id="sync-status" class="sync-status" aria-live="polite"></p>
       </div>
       <div class="list-controls">
         <label class="toggle" data-i18n-title="removeOnPlayTitle" title="Remove a video from the list when opening it">

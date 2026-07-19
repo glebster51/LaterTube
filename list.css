@@ -118,6 +118,14 @@ main {
   margin: 0;
 }
 
+.list-heading .sync-status {
+  color: #8ab4f8;
+  margin-top: 7px;
+  max-width: 640px;
+}
+
+.sync-button:disabled { cursor: wait; opacity: .65; }
+
 .list-controls {
   align-items: center;
   display: flex;
