@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -26,12 +27,15 @@ try
 
     JsonArray deletedIds = phoneResponse["deletedVideoIds"] as JsonArray ?? new JsonArray();
     JsonArray watchedIds = phoneResponse["watchedVideoIds"] as JsonArray ?? new JsonArray();
+    JsonArray cachedThumbnailIds = phoneResponse["cachedThumbnailIds"] as JsonArray ?? new JsonArray();
     HashSet<string> deleted = deletedIds.Select(node => node?.GetValue<string>() ?? "").Where(id => id.Length > 0).ToHashSet();
     JsonArray currentVideos = new();
     foreach (JsonNode? video in videos)
     {
         if (!deleted.Contains(video?["id"]?.GetValue<string>() ?? "")) currentVideos.Add(video?.DeepClone());
     }
+
+    await CacheMissingThumbnails(adb, currentVideos, cachedThumbnailIds);
 
     DeleteRemoteFile(adb, "sync-response.json");
     WriteRemoteJson(adb, "sync-request.json", new JsonObject { ["action"] = "ack", ["videos"] = currentVideos });
@@ -135,6 +139,48 @@ static void WriteRemoteJson(string adb, string fileName, JsonObject value)
         if (pushed.ExitCode != 0) throw new InvalidOperationException($"Could not send USB sync request: {pushed.Error.Trim()}");
         ProcessResult copied = Run(adb, $"shell run-as {PackageName} cp {deviceTemporaryFile} files/{fileName}");
         if (copied.ExitCode != 0) throw new InvalidOperationException($"Could not save USB sync request on phone: {copied.Error.Trim()}");
+    }
+    finally
+    {
+        try { File.Delete(temporaryFile); } catch (Exception) { }
+        Run(adb, $"shell rm -f {deviceTemporaryFile}");
+    }
+}
+
+static async Task CacheMissingThumbnails(string adb, JsonArray videos, JsonArray cachedThumbnailIds)
+{
+    HashSet<string> cached = cachedThumbnailIds.Select(node => node?.GetValue<string>() ?? "").ToHashSet();
+    using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(8) };
+    foreach (JsonNode? video in videos)
+    {
+        string id = video?["id"]?.GetValue<string>() ?? "";
+        if (!System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-zA-Z0-9_-]{6,20}$") || cached.Contains(id)) continue;
+        try
+        {
+            byte[] image = await client.GetByteArrayAsync($"https://i.ytimg.com/vi/{id}/mqdefault.jpg");
+            if (image.Length < 100 || image.Length > 300_000) continue;
+            WriteRemoteBytes(adb, $"thumbnails/{id}.jpg", image);
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine($"Thumbnail {id} was skipped: {error.Message}");
+        }
+    }
+}
+
+static void WriteRemoteBytes(string adb, string relativePath, byte[] content)
+{
+    string temporaryFile = Path.Combine(Path.GetTempPath(), $"latertube-thumbnail-{Guid.NewGuid():N}.jpg");
+    const string deviceTemporaryFile = "/data/local/tmp/latertube-thumbnail.jpg";
+    try
+    {
+        File.WriteAllBytes(temporaryFile, content);
+        ProcessResult pushed = Run(adb, $"push \"{temporaryFile}\" {deviceTemporaryFile}");
+        if (pushed.ExitCode != 0) throw new InvalidOperationException(pushed.Error.Trim());
+        ProcessResult directory = Run(adb, $"shell run-as {PackageName} mkdir -p files/thumbnails");
+        if (directory.ExitCode != 0) throw new InvalidOperationException(directory.Error.Trim());
+        ProcessResult copied = Run(adb, $"shell run-as {PackageName} cp {deviceTemporaryFile} files/{relativePath}");
+        if (copied.ExitCode != 0) throw new InvalidOperationException(copied.Error.Trim());
     }
     finally
     {

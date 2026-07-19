@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -25,6 +26,7 @@ public class MainActivity extends Activity {
     private static final String PENDING_DELETED = "pendingDeleted";
     private static final String PENDING_WATCHED = "pendingWatched";
     private static final String DEVICE_ID = "deviceId";
+    private static final String SORT = "sort";
     private static final String REQUEST_FILE = "sync-request.json";
     private static final String RESPONSE_FILE = "sync-response.json";
     private final Object lock = new Object();
@@ -83,6 +85,7 @@ public class MainActivity extends Activity {
                     response.put("deviceId", prefs.getString(DEVICE_ID, ""));
                     response.put("deletedVideoIds", pending(PENDING_DELETED));
                     response.put("watchedVideoIds", pending(PENDING_WATCHED));
+                    response.put("cachedThumbnailIds", cachedThumbnailIds());
                     response.put("revision", System.currentTimeMillis());
                     writeResponse(response);
                 } else if ("ack".equals(action)) {
@@ -126,6 +129,25 @@ public class MainActivity extends Activity {
 
     private void writeResponse(JSONObject response) throws Exception {
         Files.write(new File(getFilesDir(), RESPONSE_FILE).toPath(), response.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private JSONArray cachedThumbnailIds() {
+        JSONArray ids = new JSONArray();
+        File[] files = new File(getFilesDir(), "thumbnails").listFiles();
+        if (files == null) return ids;
+        for (File file : files) {
+            String name = file.getName();
+            if (name.endsWith(".jpg")) ids.put(name.substring(0, name.length() - 4));
+        }
+        return ids;
+    }
+
+    private String thumbnailData(String id) {
+        if (!id.matches("[a-zA-Z0-9_-]{6,20}")) return "";
+        File file = new File(new File(getFilesDir(), "thumbnails"), id + ".jpg");
+        if (!file.isFile()) return "";
+        try { return Base64.encodeToString(Files.readAllBytes(file.toPath()), Base64.NO_WRAP); }
+        catch (Exception ignored) { return ""; }
     }
 
     private Set<String> toSet(JSONArray array) {
@@ -172,13 +194,22 @@ public class MainActivity extends Activity {
 
     private final class PhoneBridge {
         @JavascriptInterface public String getVideos() { synchronized (lock) { return videos().toString(); } }
+        @JavascriptInterface public String getSort() { return prefs.getString(SORT, "added-newest"); }
+        @JavascriptInterface public void setSort(String sort) { prefs.edit().putString(SORT, sort).apply(); }
+        @JavascriptInterface public String getThumbnailData(String id) { return thumbnailData(id); }
         @JavascriptInterface public void toggleWatched(String id) { MainActivity.this.toggleWatched(id); }
         @JavascriptInterface public void deleteVideo(String id) { MainActivity.this.deleteVideo(id); }
         @JavascriptInterface public void openVideo(String url) {
             try {
                 Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                startActivity(Intent.createChooser(view, "Открыть видео"));
-            } catch (Exception ignored) { }
+                view.setPackage("app.revanced.android.youtube");
+                startActivity(view);
+            } catch (Exception ignored) {
+                try {
+                    Intent fallback = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    startActivity(Intent.createChooser(fallback, "Открыть видео"));
+                } catch (Exception ignoredAgain) { }
+            }
         }
     }
 }
