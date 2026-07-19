@@ -104,8 +104,16 @@ function render() {
     .sort(sortVideos);
 
   grid.replaceChildren(...visible.map(createCard));
-  counter.textContent = t("videoCount", [String(videos.length)])
-    + (query ? ` · ${t("foundCount", [String(visible.length)])}` : "");
+  const counterParts = [t("videoCount", [String(videos.length)])];
+  const totalDuration = videos.reduce((total, video) => {
+    const duration = Number(video.durationSeconds);
+    return total + (Number.isFinite(duration) && duration > 0 ? duration : 0);
+  }, 0);
+  if (totalDuration > 0) {
+    counterParts.push(t("totalDuration", [formatTotalDuration(totalDuration)]));
+  }
+  if (query) counterParts.push(t("foundCount", [String(visible.length)]));
+  counter.textContent = counterParts.join(" · ");
   empty.hidden = videos.length !== 0;
   grid.hidden = videos.length === 0;
   clearAll.hidden = videos.length === 0;
@@ -236,6 +244,16 @@ function formatDuration(totalSeconds) {
   return hours
     ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
     : `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+function formatTotalDuration(totalSeconds) {
+  const totalMinutes = Math.max(1, Math.ceil(totalSeconds / 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const parts = [];
+  if (hours) parts.push(t("durationHours", [String(hours)]));
+  if (minutes || !hours) parts.push(t("durationMinutes", [String(minutes)]));
+  return parts.join(" ");
 }
 
 async function clearVideos() {
