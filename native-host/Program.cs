@@ -104,13 +104,40 @@ static string FindAdb()
 
 static void EnsureSingleAuthorizedDevice(string adb)
 {
+    List<string> devices = AuthorizedDevices(adb, out bool unauthorized);
+    if (devices.Count == 0 && !unauthorized)
+    {
+        ConnectDiscoveredWirelessDevice(adb);
+        devices = AuthorizedDevices(adb, out unauthorized);
+    }
+    if (unauthorized) throw new InvalidOperationException("Android device is unauthorized. Allow USB debugging on the phone.");
+    if (devices.Count == 0) throw new InvalidOperationException("No authorized Android device found. Connect USB or enable paired Wireless debugging on the same Wi-Fi network.");
+    if (devices.Count > 1) throw new InvalidOperationException("Multiple authorized Android devices are connected.");
+}
+
+static List<string> AuthorizedDevices(string adb, out bool unauthorized)
+{
     ProcessResult result = Run(adb, "devices");
     string[] lines = result.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-    bool unauthorized = lines.Any(line => line.Contains("\tunauthorized", StringComparison.Ordinal));
-    List<string> devices = lines.Where(line => line.Contains("\tdevice", StringComparison.Ordinal)).ToList();
-    if (unauthorized) throw new InvalidOperationException("Android device is unauthorized. Allow USB debugging on the phone.");
-    if (devices.Count == 0) throw new InvalidOperationException("No authorized Android device found.");
-    if (devices.Count > 1) throw new InvalidOperationException("Multiple authorized Android devices are connected.");
+    unauthorized = lines.Any(line => line.Contains("\tunauthorized", StringComparison.Ordinal));
+    return lines.Where(line => line.Contains("\tdevice", StringComparison.Ordinal)).ToList();
+}
+
+static void ConnectDiscoveredWirelessDevice(string adb)
+{
+    ProcessResult result = Run(adb, "mdns services");
+    string[] candidates = result.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+        .Where(line => line.Contains("_adb-tls-connect._tcp", StringComparison.Ordinal))
+        .Select(line => System.Text.RegularExpressions.Regex.Match(line, @"(?<endpoint>(?:\d{1,3}\.){3}\d{1,3}:\d+)"))
+        .Where(match => match.Success)
+        .Select(match => match.Groups["endpoint"].Value)
+        .Distinct(StringComparer.Ordinal)
+        .ToArray();
+
+    if (candidates.Length > 1)
+        throw new InvalidOperationException("Multiple paired wireless Android devices were discovered.");
+    if (candidates.Length == 1)
+        Run(adb, $"connect {candidates[0]}");
 }
 
 static void EnsurePhoneAppInstalled(string adb)
