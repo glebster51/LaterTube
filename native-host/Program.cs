@@ -125,7 +125,7 @@ static List<string> AuthorizedDevices(string adb, out bool unauthorized)
 
 static void ConnectDiscoveredWirelessDevice(string adb)
 {
-    ProcessResult result = Run(adb, "mdns services");
+    ProcessResult result = RunWithTimeout(adb, "mdns services", TimeSpan.FromSeconds(2));
     string[] candidates = result.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
         .Where(line => line.Contains("_adb-tls-connect._tcp", StringComparison.Ordinal))
         .Select(line => System.Text.RegularExpressions.Regex.Match(line, @"(?<endpoint>(?:\d{1,3}\.){3}\d{1,3}:\d+)"))
@@ -241,6 +241,23 @@ static ProcessResult Run(string executable, string arguments)
     string error = process.StandardError.ReadToEnd();
     process.WaitForExit();
     return new ProcessResult(process.ExitCode, output, error);
+}
+
+static ProcessResult RunWithTimeout(string executable, string arguments, TimeSpan timeout)
+{
+    ProcessStartInfo info = new(executable, arguments) {
+        RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true
+    };
+    using Process process = Process.Start(info) ?? throw new InvalidOperationException($"Could not start {executable}.");
+    StringBuilder output = new();
+    StringBuilder error = new();
+    process.OutputDataReceived += (_, eventArgs) => { if (eventArgs.Data is not null) output.AppendLine(eventArgs.Data); };
+    process.ErrorDataReceived += (_, eventArgs) => { if (eventArgs.Data is not null) error.AppendLine(eventArgs.Data); };
+    process.BeginOutputReadLine();
+    process.BeginErrorReadLine();
+    if (!process.WaitForExit((int)timeout.TotalMilliseconds)) process.Kill(entireProcessTree: true);
+    process.WaitForExit();
+    return new ProcessResult(process.ExitCode, output.ToString(), error.ToString());
 }
 
 record ProcessResult(int ExitCode, string Output, string Error);
