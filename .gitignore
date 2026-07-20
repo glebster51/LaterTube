@@ -1,4 +1,5 @@
 .agents/
+agent-notes/
 .codex/
 *.zip
 codex-permission-check.tmp
