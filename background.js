@@ -49,6 +49,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.tabs.create({ url: chrome.runtime.getURL("list.html") });
   }
 
+  if (message?.type === "ENRICH_INCOMPLETE_VIDEOS") {
+    enrichIncompleteVideos()
+      .then(sendResponse)
+      .catch((error) => sendResponse({ error: String(error?.message || error || "metadata-refresh-failed") }));
+    return true;
+  }
 });
 
 function hasViewCount(value) {
@@ -280,6 +286,153 @@ function extractJsonObject(text, startIndex) {
 async function getVideos() {
   const stored = await chrome.storage.local.get(STORAGE_KEY);
   return Array.isArray(stored[STORAGE_KEY]) ? stored[STORAGE_KEY] : [];
+}
+
+function hasDuration(value) {
+  return Number.isFinite(Number(value)) && Number(value) > 0;
+}
+
+function hasTimestamp(value) {
+  return Number.isFinite(Number(value)) && Number(value) > 0;
+}
+
+function isMissingText(value) {
+  return typeof value !== "string" || !value.trim();
+}
+
+function isMissingTitle(value) {
+  return isMissingText(value) || ["YouTube video", "Видео YouTube", "Video de YouTube"].includes(value.trim());
+}
+
+function needsMetadata(video) {
+  return isMissingTitle(video.title)
+    || isMissingText(video.channel)
+    || !hasDuration(video.durationSeconds)
+    || !hasTimestamp(video.publishedAt)
+    || !hasViewCount(video.viewCount)
+    || isMissingText(video.thumbnail);
+}
+
+async function enrichIncompleteVideos() {
+  const videos = await getVideos();
+  const incomplete = videos.filter(needsMetadata);
+  if (!incomplete.length) return { checked: 0, updated: 0, failed: 0 };
+
+  const metadata = await mapWithConcurrency(incomplete, 3, fetchVideoMetadata);
+  let updated = 0;
+  const mergedVideos = videos.map((video) => {
+    const fetched = metadata.get(video.id);
+    if (!fetched) return video;
+
+    const merged = mergeMissingMetadata(video, fetched);
+    if (merged !== video) updated++;
+    return merged;
+  });
+
+  if (updated) await chrome.storage.local.set({ [STORAGE_KEY]: mergedVideos });
+  return {
+    checked: incomplete.length,
+    updated,
+    failed: incomplete.length - [...metadata.values()].filter(Boolean).length
+  };
+}
+
+async function mapWithConcurrency(items, limit, callback) {
+  const results = new Map();
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex++];
+      results.set(item.id, await callback(item));
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function fetchVideoMetadata(video) {
+  try {
+    const response = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(video.id)}`, {
+      credentials: "omit"
+    });
+    if (!response.ok) return null;
+
+    const playerResponse = extractPlayerResponse(await response.text());
+    const details = playerResponse?.videoDetails;
+    if (!details?.videoId) return null;
+
+    const microformat = playerResponse?.microformat?.playerMicroformatRenderer || {};
+    const thumbnail = details.thumbnail?.thumbnails?.at(-1)?.url;
+    const publishedAt = Date.parse(microformat.publishDate || microformat.uploadDate || "");
+    return {
+      title: details.title,
+      channel: details.author,
+      durationSeconds: normalizeDuration(details.lengthSeconds),
+      publishedAt: Number.isFinite(publishedAt) ? publishedAt : null,
+      viewCount: normalizeViewCount(details.viewCount),
+      thumbnail
+    };
+  } catch {
+    return null;
+  }
+}
+
+function extractPlayerResponse(html) {
+  const markers = ["var ytInitialPlayerResponse =", "ytInitialPlayerResponse =", "\"playerResponse\":"];
+  for (const marker of markers) {
+    const markerIndex = html.indexOf(marker);
+    if (markerIndex < 0) continue;
+    const parsed = extractJsonObject(html, markerIndex + marker.length);
+    if (parsed?.videoDetails) return parsed;
+  }
+  return null;
+}
+
+function extractJsonObject(text, startIndex) {
+  const objectStart = text.indexOf("{", startIndex);
+  if (objectStart < 0) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = objectStart; index < text.length; index++) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === "\"") inString = false;
+      continue;
+    }
+    if (character === "\"") inString = true;
+    else if (character === "{") depth++;
+    else if (character === "}" && --depth === 0) {
+      try {
+        return JSON.parse(text.slice(objectStart, index + 1));
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+function mergeMissingMetadata(video, metadata) {
+  const next = { ...video };
+  let changed = false;
+  const setIfMissing = (key, value, isMissing) => {
+    if (isMissing(next[key]) && value !== null && value !== undefined && value !== "") {
+      next[key] = value;
+      changed = true;
+    }
+  };
+
+  setIfMissing("title", metadata.title, isMissingTitle);
+  setIfMissing("channel", metadata.channel, isMissingText);
+  setIfMissing("durationSeconds", metadata.durationSeconds, (value) => !hasDuration(value));
+  setIfMissing("publishedAt", metadata.publishedAt, (value) => !hasTimestamp(value));
+  setIfMissing("viewCount", metadata.viewCount, (value) => !hasViewCount(value));
+  setIfMissing("thumbnail", metadata.thumbnail, isMissingText);
+  return changed ? next : video;
 }
 
 async function setBadge(text, color) {

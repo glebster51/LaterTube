@@ -124,6 +124,12 @@ main {
   max-width: 640px;
 }
 
+.list-heading .metadata-status {
+  color: #aaa;
+  margin-top: 5px;
+  max-width: 640px;
+}
+
 .sync-button:disabled { cursor: wait; opacity: .65; }
 
 .list-controls {

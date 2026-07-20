@@ -15,6 +15,7 @@ const importFile = document.querySelector("#import-file");
 const removeOnPlayToggle = document.querySelector("#remove-on-play");
 const syncPhone = document.querySelector("#sync-phone");
 const syncStatus = document.querySelector("#sync-status");
+const metadataStatus = document.querySelector("#metadata-status");
 const template = document.querySelector("#card-template");
 const supportDialog = document.querySelector("#support-dialog");
 const copyStatus = document.querySelector("#copy-status");
@@ -99,6 +100,33 @@ async function loadState() {
   removeOnPlay = stored[REMOVE_ON_PLAY_KEY] === true;
   removeOnPlayToggle.checked = removeOnPlay;
   render();
+  void enrichIncompleteMetadata();
+}
+
+function needsMetadata(video) {
+  const missingText = (value) => typeof value !== "string" || !value.trim();
+  const missingTitle = missingText(video.title)
+    || ["YouTube video", "Видео YouTube", "Video de YouTube"].includes(video.title.trim());
+  const hasDuration = Number.isFinite(Number(video.durationSeconds)) && Number(video.durationSeconds) > 0;
+  const hasTimestamp = Number.isFinite(Number(video.publishedAt)) && Number(video.publishedAt) > 0;
+  return missingTitle || missingText(video.channel) || !hasDuration || !hasTimestamp
+    || !hasViewCount(video.viewCount) || missingText(video.thumbnail);
+}
+
+async function enrichIncompleteMetadata() {
+  const incompleteCount = videos.filter(needsMetadata).length;
+  if (!incompleteCount) return;
+
+  metadataStatus.textContent = t("metadataLoading", [String(incompleteCount)]);
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "ENRICH_INCOMPLETE_VIDEOS" });
+    if (result?.error) throw new Error(result.error);
+    metadataStatus.textContent = result?.updated
+      ? t("metadataUpdated", [String(result.updated), String(result.checked)])
+      : t("metadataNotFound", [String(result?.checked || incompleteCount)]);
+  } catch {
+    metadataStatus.textContent = t("metadataFailed");
+  }
 }
 
 function render() {
