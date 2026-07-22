@@ -14,7 +14,8 @@ if (!(Test-Path -LiteralPath $adb)) { $adb = "adb" }
 
 $devices = & $adb devices
 if ($devices -match "unauthorized") { throw "Allow USB debugging on Pixel 7, then run this script again." }
-if (($devices | Select-String "`tdevice$").Count -ne 1) { throw "Connect exactly one authorized Android device." }
+$authorizedDevices = @($devices | Select-String "`tdevice$")
+if ($authorizedDevices.Count -ne 1) { throw "Connect exactly one authorized Android device." }
 
 $wrapper = Join-Path $projectRoot "android\gradle\wrapper\gradle-wrapper.jar"
 if (!(Test-Path -LiteralPath $wrapper)) { & (Join-Path $PSScriptRoot "download-gradle-wrapper.ps1") }
