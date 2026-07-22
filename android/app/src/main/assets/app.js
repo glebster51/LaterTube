@@ -4,10 +4,19 @@ const summary = document.querySelector('#summary');
 const sort = document.querySelector('#sort');
 
 sort.value = Android.getSort();
-sort.addEventListener('change', () => { Android.setSort(sort.value); render(); });
+sort.addEventListener('change', () => {
+  Android.setSort(sort.value);
+  if (sort.value !== 'random') render();
+});
+sort.addEventListener('click', () => {
+  if (sort.value !== 'random') return;
+  Android.setSort(sort.value);
+  render();
+});
 
 function render() {
-  const videos = JSON.parse(Android.getVideos()).sort(compareVideos);
+  const videos = JSON.parse(Android.getVideos());
+  if (sort.value === 'random') shuffle(videos); else videos.sort(compareVideos);
   const activeCount = videos.filter(video => !video.pendingDeletion).length;
   summary.textContent = `${activeCount} видео на телефоне`;
   empty.hidden = videos.length !== 0;
@@ -44,10 +53,14 @@ function compareVideos(a, b) {
   if (mode === 'title') return String(a.title || '').localeCompare(String(b.title || ''), 'ru');
   if (mode === 'shortest') return value(a.durationSeconds) - value(b.durationSeconds);
   if (mode === 'longest') return value(b.durationSeconds) - value(a.durationSeconds);
-  if (mode === 'random') return randomRank(a.id) - randomRank(b.id);
   return value(b.addedAt) - value(a.addedAt);
 }
 function value(number) { const result = Number(number); return Number.isFinite(result) ? result : 0; }
-function randomRank(id) { return String(id).split('').reduce((rank, char) => (rank * 31 + char.charCodeAt(0)) >>> 0, 0); }
+function shuffle(items) {
+  for (let index = items.length - 1; index > 0; index--) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [items[index], items[randomIndex]] = [items[randomIndex], items[index]];
+  }
+}
 function duration(seconds) { const s = Math.round(Number(seconds) || 0); return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s % 3600 / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2,'0')}`; }
 render();
