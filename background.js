@@ -318,10 +318,17 @@ async function enrichIncompleteVideos() {
   const incomplete = videos.filter(needsMetadata);
   if (!incomplete.length) return { checked: 0, updated: 0, failed: 0 };
 
-  const metadata = await mapWithConcurrency(incomplete, 3, fetchVideoMetadata);
+  const fetchedMetadata = await mapWithConcurrency(
+    incomplete,
+    3,
+    (video) => fetchVideoMetadata(video.id)
+  );
+  const metadataById = new Map(
+    incomplete.map((video, index) => [video.id, fetchedMetadata[index]])
+  );
   let updated = 0;
   const mergedVideos = videos.map((video) => {
-    const fetched = metadata.get(video.id);
+    const fetched = metadataById.get(video.id);
     if (!fetched) return video;
 
     const merged = mergeMissingMetadata(video, fetched);
@@ -333,87 +340,8 @@ async function enrichIncompleteVideos() {
   return {
     checked: incomplete.length,
     updated,
-    failed: incomplete.length - [...metadata.values()].filter(Boolean).length
+    failed: incomplete.length - fetchedMetadata.filter(Boolean).length
   };
-}
-
-async function mapWithConcurrency(items, limit, callback) {
-  const results = new Map();
-  let nextIndex = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (nextIndex < items.length) {
-      const item = items[nextIndex++];
-      results.set(item.id, await callback(item));
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
-async function fetchVideoMetadata(video) {
-  try {
-    const response = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(video.id)}`, {
-      credentials: "omit"
-    });
-    if (!response.ok) return null;
-
-    const playerResponse = extractPlayerResponse(await response.text());
-    const details = playerResponse?.videoDetails;
-    if (!details?.videoId) return null;
-
-    const microformat = playerResponse?.microformat?.playerMicroformatRenderer || {};
-    const thumbnail = details.thumbnail?.thumbnails?.at(-1)?.url;
-    const publishedAt = Date.parse(microformat.publishDate || microformat.uploadDate || "");
-    return {
-      title: details.title,
-      channel: details.author,
-      durationSeconds: normalizeDuration(details.lengthSeconds),
-      publishedAt: Number.isFinite(publishedAt) ? publishedAt : null,
-      viewCount: normalizeViewCount(details.viewCount),
-      thumbnail
-    };
-  } catch {
-    return null;
-  }
-}
-
-function extractPlayerResponse(html) {
-  const markers = ["var ytInitialPlayerResponse =", "ytInitialPlayerResponse =", "\"playerResponse\":"];
-  for (const marker of markers) {
-    const markerIndex = html.indexOf(marker);
-    if (markerIndex < 0) continue;
-    const parsed = extractJsonObject(html, markerIndex + marker.length);
-    if (parsed?.videoDetails) return parsed;
-  }
-  return null;
-}
-
-function extractJsonObject(text, startIndex) {
-  const objectStart = text.indexOf("{", startIndex);
-  if (objectStart < 0) return null;
-
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let index = objectStart; index < text.length; index++) {
-    const character = text[index];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (character === "\\") escaped = true;
-      else if (character === "\"") inString = false;
-      continue;
-    }
-    if (character === "\"") inString = true;
-    else if (character === "{") depth++;
-    else if (character === "}" && --depth === 0) {
-      try {
-        return JSON.parse(text.slice(objectStart, index + 1));
-      } catch {
-        return null;
-      }
-    }
-  }
-  return null;
 }
 
 function mergeMissingMetadata(video, metadata) {
