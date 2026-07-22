@@ -147,8 +147,9 @@ async function addVideos(incoming) {
   const videos = await getVideos();
   const knownIds = new Set(videos.map((video) => video.id));
   const results = [];
+  const prepared = await mapWithConcurrency(incoming, 3, completeVideoMetadata);
 
-  for (const candidate of incoming) {
+  for (const candidate of prepared) {
     if (!candidate?.id) {
       results.push({ added: false, error: "invalid-video" });
       continue;
@@ -178,6 +179,102 @@ async function addVideos(incoming) {
 
   await chrome.storage.local.set({ [STORAGE_KEY]: videos });
   return results;
+}
+
+async function mapWithConcurrency(items, limit, callback) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await callback(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function completeVideoMetadata(candidate) {
+  if (!candidate?.id) return candidate;
+
+  const video = normalizeVideo(candidate);
+  const metadata = await fetchVideoMetadata(video.id);
+  if (!metadata) return video;
+
+  return normalizeVideo({
+    ...video,
+    title: metadata.title || video.title,
+    channel: metadata.channel || video.channel,
+    durationSeconds: metadata.durationSeconds || video.durationSeconds,
+    publishedAt: metadata.publishedAt || video.publishedAt,
+    viewCount: hasViewCount(metadata.viewCount) ? metadata.viewCount : video.viewCount,
+    thumbnail: metadata.thumbnail || video.thumbnail
+  });
+}
+
+async function fetchVideoMetadata(videoId) {
+  try {
+    const response = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, {
+      credentials: "omit"
+    });
+    if (!response.ok) return null;
+
+    const playerResponse = extractPlayerResponse(await response.text());
+    const details = playerResponse?.videoDetails;
+    if (details?.videoId !== videoId) return null;
+
+    const microformat = playerResponse?.microformat?.playerMicroformatRenderer || {};
+    const publishedAt = Date.parse(microformat.publishDate || microformat.uploadDate || "");
+    return {
+      title: details.title,
+      channel: details.author,
+      durationSeconds: normalizeDuration(details.lengthSeconds),
+      publishedAt: Number.isFinite(publishedAt) ? publishedAt : null,
+      viewCount: normalizeViewCount(details.viewCount),
+      thumbnail: details.thumbnail?.thumbnails?.at(-1)?.url || null
+    };
+  } catch {
+    return null;
+  }
+}
+
+function extractPlayerResponse(html) {
+  const markers = ["var ytInitialPlayerResponse =", "ytInitialPlayerResponse =", "\"playerResponse\":"];
+  for (const marker of markers) {
+    const markerIndex = html.indexOf(marker);
+    if (markerIndex < 0) continue;
+    const parsed = extractJsonObject(html, markerIndex + marker.length);
+    if (parsed?.videoDetails) return parsed;
+  }
+  return null;
+}
+
+function extractJsonObject(text, startIndex) {
+  const objectStart = text.indexOf("{", startIndex);
+  if (objectStart < 0) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = objectStart; index < text.length; index++) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === "\"") inString = false;
+      continue;
+    }
+    if (character === "\"") inString = true;
+    else if (character === "{") depth++;
+    else if (character === "}" && --depth === 0) {
+      try {
+        return JSON.parse(text.slice(objectStart, index + 1));
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
 }
 
 async function getVideos() {
