@@ -25,9 +25,9 @@ public class MainActivity extends Activity {
     private static final String PREFS = "latertube_local_sync";
     private static final String VIDEOS = "videos";
     private static final String PENDING_DELETED = "pendingDeleted";
-    private static final String PENDING_WATCHED = "pendingWatched";
     private static final String DEVICE_ID = "deviceId";
     private static final String SORT = "sort";
+    private static final String REMOVE_ON_OPEN = "removeOnOpen";
     private static final String REQUEST_FILE = "sync-request.json";
     private static final String RESPONSE_FILE = "sync-response.json";
     private final Object lock = new Object();
@@ -37,6 +37,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        removeObsoleteWatchedData();
         ensureDeviceId();
         processSyncRequest();
         webView = new WebView(this);
@@ -62,6 +63,20 @@ public class MainActivity extends Activity {
 
     private void ensureDeviceId() {
         if (!prefs.contains(DEVICE_ID)) prefs.edit().putString(DEVICE_ID, UUID.randomUUID().toString()).apply();
+    }
+
+    private void removeObsoleteWatchedData() {
+        JSONArray current = videos();
+        boolean changed = false;
+        for (int i = 0; i < current.length(); i++) {
+            JSONObject video = current.optJSONObject(i);
+            if (video != null && video.has("watched")) {
+                video.remove("watched");
+                changed = true;
+            }
+        }
+        if (changed) saveVideos(current);
+        prefs.edit().remove("pendingWatched").apply();
     }
 
     private JSONArray videos() {
@@ -90,7 +105,6 @@ public class MainActivity extends Activity {
                     response.put("ok", true);
                     response.put("deviceId", prefs.getString(DEVICE_ID, ""));
                     response.put("deletedVideoIds", pending(PENDING_DELETED));
-                    response.put("watchedVideoIds", pending(PENDING_WATCHED));
                     response.put("cachedThumbnailIds", cachedThumbnailIds());
                     response.put("revision", System.currentTimeMillis());
                     writeResponse(response);
@@ -114,23 +128,16 @@ public class MainActivity extends Activity {
     private void applyAcknowledgement(JSONObject request) throws Exception {
         JSONArray incoming = request.optJSONArray("videos");
         if (incoming == null) incoming = new JSONArray();
-        Set<String> watched = toSet(pending(PENDING_WATCHED));
-        JSONArray oldVideos = videos();
-        for (int i = 0; i < oldVideos.length(); i++) {
-            JSONObject old = oldVideos.optJSONObject(i);
-            if (old != null && old.optBoolean("watched")) watched.add(old.optString("id"));
-        }
         JSONArray merged = new JSONArray();
         for (int i = 0; i < incoming.length(); i++) {
             JSONObject video = incoming.optJSONObject(i);
             if (video == null || video.optString("id").isEmpty()) continue;
             JSONObject copy = new JSONObject(video.toString());
-            copy.put("watched", watched.contains(copy.optString("id")));
+            copy.remove("watched");
             merged.put(copy);
         }
         saveVideos(merged);
         savePending(PENDING_DELETED, new JSONArray());
-        savePending(PENDING_WATCHED, new JSONArray());
     }
 
     private void writeResponse(JSONObject response) throws Exception {
@@ -162,44 +169,38 @@ public class MainActivity extends Activity {
         return values;
     }
 
-    private void toggleWatched(String id) {
+    private boolean setPendingDeletion(String id, boolean pendingDeletion) {
         synchronized (lock) {
             JSONArray current = videos();
-            JSONArray changed = new JSONArray();
-            boolean nowWatched = false;
+            boolean found = false;
+            boolean changed = false;
             for (int i = 0; i < current.length(); i++) {
                 JSONObject video = current.optJSONObject(i);
                 if (video == null) continue;
                 if (id.equals(video.optString("id"))) {
-                    nowWatched = !video.optBoolean("watched");
-                    try { video.put("watched", nowWatched); } catch (Exception ignored) { }
+                    found = true;
+                    changed = video.optBoolean("pendingDeletion") != pendingDeletion;
+                    try { video.put("pendingDeletion", pendingDeletion); } catch (Exception ignored) { }
+                    break;
                 }
-                changed.put(video);
             }
-            saveVideos(changed);
-            Set<String> dirty = toSet(pending(PENDING_WATCHED));
-            if (nowWatched) dirty.add(id); else dirty.remove(id);
-            savePending(PENDING_WATCHED, new JSONArray(dirty));
+            if (!found) return false;
+            saveVideos(current);
+            Set<String> deleted = toSet(pending(PENDING_DELETED));
+            if (pendingDeletion) deleted.add(id); else deleted.remove(id);
+            savePending(PENDING_DELETED, new JSONArray(deleted));
+            return changed;
         }
     }
 
-    private void deleteVideo(String id) {
-        synchronized (lock) {
-            JSONArray current = videos();
-            JSONArray changed = new JSONArray();
-            for (int i = 0; i < current.length(); i++) {
-                JSONObject video = current.optJSONObject(i);
-                if (video == null) continue;
-                if (id.equals(video.optString("id"))) {
-                    boolean pendingDeletion = !video.optBoolean("pendingDeletion");
-                    try { video.put("pendingDeletion", pendingDeletion); } catch (Exception ignored) { }
-                    Set<String> deleted = toSet(pending(PENDING_DELETED));
-                    if (pendingDeletion) deleted.add(id); else deleted.remove(id);
-                    savePending(PENDING_DELETED, new JSONArray(deleted));
-                }
-                changed.put(video);
+    private void toggleDeletion(String id) {
+        JSONArray current = videos();
+        for (int i = 0; i < current.length(); i++) {
+            JSONObject video = current.optJSONObject(i);
+            if (video != null && id.equals(video.optString("id"))) {
+                setPendingDeletion(id, !video.optBoolean("pendingDeletion"));
+                return;
             }
-            saveVideos(changed);
         }
     }
 
@@ -208,9 +209,11 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String getSort() { return prefs.getString(SORT, "added-newest"); }
         @JavascriptInterface public void setSort(String sort) { prefs.edit().putString(SORT, sort).apply(); }
         @JavascriptInterface public String getThumbnailData(String id) { return thumbnailData(id); }
-        @JavascriptInterface public void toggleWatched(String id) { MainActivity.this.toggleWatched(id); }
-        @JavascriptInterface public void deleteVideo(String id) { MainActivity.this.deleteVideo(id); }
-        @JavascriptInterface public void openVideo(String url) {
+        @JavascriptInterface public boolean getRemoveOnOpen() { return prefs.getBoolean(REMOVE_ON_OPEN, false); }
+        @JavascriptInterface public void setRemoveOnOpen(boolean enabled) { prefs.edit().putBoolean(REMOVE_ON_OPEN, enabled).apply(); }
+        @JavascriptInterface public void toggleDeletion(String id) { MainActivity.this.toggleDeletion(id); }
+        @JavascriptInterface public boolean openVideo(String id, String url) {
+            boolean markedForDeletion = prefs.getBoolean(REMOVE_ON_OPEN, false) && setPendingDeletion(id, true);
             try {
                 Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                 view.setPackage("app.revanced.android.youtube");
@@ -221,6 +224,7 @@ public class MainActivity extends Activity {
                     startActivity(Intent.createChooser(fallback, "Открыть видео"));
                 } catch (Exception ignoredAgain) { }
             }
+            return markedForDeletion;
         }
     }
 }

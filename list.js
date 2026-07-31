@@ -285,9 +285,8 @@ async function syncWithPhone() {
       await chrome.storage.local.set({ [STORAGE_KEY]: videos });
     }
 
-    const watchedCount = Number(result.watchedCount) || 0;
     const deletedCount = deletedIds.size;
-    syncStatus.textContent = t("syncSuccess", [String(videos.length), String(watchedCount), String(deletedCount)]);
+    syncStatus.textContent = t("syncSuccess", [String(videos.length), String(deletedCount)]);
     render();
   } catch (error) {
     const message = String(error?.message || error || "");

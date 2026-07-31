@@ -26,7 +26,6 @@ try
         throw new InvalidOperationException(phoneResponse["error"]?.GetValue<string>() ?? "Phone rejected synchronization.");
 
     JsonArray deletedIds = phoneResponse["deletedVideoIds"] as JsonArray ?? new JsonArray();
-    JsonArray watchedIds = phoneResponse["watchedVideoIds"] as JsonArray ?? new JsonArray();
     JsonArray cachedThumbnailIds = phoneResponse["cachedThumbnailIds"] as JsonArray ?? new JsonArray();
     HashSet<string> deleted = deletedIds.Select(node => node?.GetValue<string>() ?? "").Where(id => id.Length > 0).ToHashSet();
     JsonArray currentVideos = new();
@@ -46,8 +45,7 @@ try
 
     WriteNativeMessage(new JsonObject {
         ["ok"] = true,
-        ["deletedVideoIds"] = deletedIds.DeepClone(),
-        ["watchedCount"] = watchedIds.Count
+        ["deletedVideoIds"] = deletedIds.DeepClone()
     });
 }
 catch (Exception error)
