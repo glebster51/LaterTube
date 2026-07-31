@@ -11,3 +11,4 @@ android/build/
 native-host/bin/
 native-host/obj/
 native-host/com.glebster51.latertube_usb_sync.json
+ListBackups/
