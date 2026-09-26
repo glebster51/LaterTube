@@ -1,7 +1,14 @@
 const OWN_MARKER = "data-my-watch-later";
+const DESKTOP_MENU_LIST_SELECTOR = [
+  "ytd-menu-popup-renderer tp-yt-paper-listbox",
+  "ytd-menu-popup-renderer #items",
+  "ytd-menu-popup tp-yt-paper-listbox",
+  "ytd-menu-popup #items"
+].join(", ");
 const t = (key, substitutions) => chrome.i18n.getMessage(key, substitutions);
 let lastCardVideo = null;
 let lastUrl = location.href;
+let saveToastTimer = 0;
 
 document.addEventListener("pointerdown", rememberClickedVideo, true);
 document.addEventListener("yt-navigate-finish", refreshPageControls);
@@ -85,9 +92,8 @@ function injectMenuItem() {
     .find((element) => element.offsetParent !== null);
   const modernHeader = modernSheet?.querySelector(".ytContextualSheetLayoutHeaderContainer");
   const modernContent = modernSheet?.querySelector(".ytContextualSheetLayoutContentContainer");
-  const legacyPopup = [...document.querySelectorAll("ytd-menu-popup tp-yt-paper-listbox, ytd-menu-popup #items")]
-    .find((element) => element.offsetParent !== null);
-  const popup = modernHeader || modernContent || legacyPopup;
+  const desktopPopup = findVisibleDesktopMenuList();
+  const popup = modernHeader || modernContent || desktopPopup;
   if (!popup) return;
   const video = lastCardVideo;
   if (!video) return;
@@ -101,11 +107,16 @@ function injectMenuItem() {
   item.setAttribute("role", "menuitem");
   item.tabIndex = 0;
   item.innerHTML = `${bookmarkIcon()}<span>${t("watchLaterMyList")}</span>`;
-  item.addEventListener("click", async () => {
-    const selectedVideo = lastCardVideo;
-    if (!selectedVideo) return;
-    await saveVideo(selectedVideo, item);
-    setTimeout(() => document.body.click(), 350);
+  item.addEventListener("click", async event => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (item.dataset.saving === "true") return;
+    const outcome = await saveVideo(video, item, {
+      showToast: true,
+      savedLabel: t("alreadyInMyList"),
+      idleLabel: t("watchLaterMyList")
+    });
+    if (outcome?.ok) setTimeout(() => document.body.click(), 650);
   });
   item.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") item.click();
@@ -117,14 +128,15 @@ function injectMenuItem() {
   }
 
   item.dataset.videoId = video.id;
-  sendRuntimeMessage({ type: "HAS_VIDEO", videoId: video.id }).then((result) => {
-    if (!result) return;
-    if (!item.isConnected || item.dataset.videoId !== video.id) return;
-    item.classList.toggle("is-saved", result.saved);
-    item.querySelector("span").textContent = result.saved
-      ? t("alreadyInMyList")
-      : t("watchLaterMyList");
+  void updateButtonState(item, video.id, {
+    savedLabel: t("alreadyInMyList"),
+    idleLabel: t("watchLaterMyList")
   });
+}
+
+function findVisibleDesktopMenuList() {
+  return [...document.querySelectorAll(DESKTOP_MENU_LIST_SELECTOR)]
+    .find((element) => element.offsetParent !== null);
 }
 
 function currentVideo() {
@@ -254,27 +266,106 @@ function parseDuration(text) {
   return parts.reduce((total, part) => total * 60 + part, 0) || null;
 }
 
-async function saveVideo(video, button) {
-  if (!video) return;
+async function saveVideo(video, button, options = {}) {
+  if (!video || button.dataset.saving === "true") return { ok: false };
+  const visualVersion = nextVisualVersion(button);
+  button.dataset.saving = "true";
+  setButtonVisual(button, "pending", t("adding"));
+  if (options.showToast) showSaveToast(t("addingToLaterTube"), "pending");
+
   const result = await sendRuntimeMessage({ type: "ADD_VIDEO", video });
-  if (!result) return;
-  button.classList.toggle("is-saved", result.added || result.duplicate);
-  setButtonContents(button, result.added ? t("added") : t("alreadyInList"), true);
+  const isCurrent = () => button.dataset.videoId === video.id
+    && button.dataset.visualVersion === visualVersion;
+  const errorCode = result?.error?.code;
+  if (!result || errorCode) {
+    const authRequired = errorCode === "AUTH_REQUIRED";
+    const buttonLabel = t(authRequired ? "connectFirebase" : "cloudSaveFailed");
+    if (isCurrent()) {
+      button.dataset.saving = "false";
+      setButtonVisual(button, "error", buttonLabel);
+    }
+    if (options.showToast) {
+      showSaveToast(t(authRequired ? "cloudAuthRequired" : "addFailed"), "error");
+    }
+    setTimeout(() => {
+      if (button.isConnected && isCurrent()) {
+        void updateButtonState(button, video.id, options);
+      }
+    }, 2200);
+    return { ok: false };
+  }
+
+  const changed = result.added || result.restored;
+  const resultLabel = t(changed ? "added" : "alreadyInList");
+  if (isCurrent()) {
+    button.dataset.saving = "false";
+    setButtonVisual(button, "saved", resultLabel);
+  }
+  if (options.showToast) {
+    showSaveToast(t(changed ? "addedToLaterTube" : "alreadyInMyList"), "saved");
+  }
   setTimeout(() => {
-    if (button.isConnected && button.matches(".mwl-watch-button")) updateButtonState(button, video.id);
+    if (button.isConnected && button.matches(".mwl-watch-button") && isCurrent()) {
+      void updateButtonState(button, video.id, options);
+    }
   }, 1600);
+  return { ok: true, changed: Boolean(changed) };
 }
 
-async function updateButtonState(button, videoId) {
+async function updateButtonState(button, videoId, options = {}) {
+  const visualVersion = nextVisualVersion(button);
   const result = await sendRuntimeMessage({ type: "HAS_VIDEO", videoId });
-  if (!result) return;
+  if (!result || result.error) return;
   if (!button.isConnected || button.dataset.videoId !== videoId) return;
-  button.classList.toggle("is-saved", result.saved);
-  setButtonContents(button, result.saved ? t("inMyList") : t("watchLater"), result.saved);
+  if (button.dataset.visualVersion !== visualVersion || button.dataset.saving === "true") return;
+  setButtonVisual(button, result.saved ? "saved" : "idle", result.saved
+    ? options.savedLabel || t("inMyList")
+    : options.idleLabel || t("watchLater"));
 }
 
-function setButtonContents(button, label, checked) {
-  button.innerHTML = `${checked ? checkIcon() : bookmarkIcon()}<span>${label}</span>`;
+function nextVisualVersion(button) {
+  const version = (Number(button.dataset.visualVersion) || 0) + 1;
+  button.dataset.visualVersion = String(version);
+  return String(version);
+}
+
+function setButtonVisual(button, state, label) {
+  const pending = state === "pending";
+  button.classList.toggle("is-pending", pending);
+  button.classList.toggle("is-saved", state === "saved");
+  button.classList.toggle("is-error", state === "error");
+  button.setAttribute("aria-busy", String(pending));
+  if (button instanceof HTMLButtonElement) button.disabled = pending;
+  if (pending) button.setAttribute("aria-disabled", "true");
+  else button.removeAttribute("aria-disabled");
+
+  const icon = pending
+    ? spinnerIcon()
+    : state === "saved"
+      ? checkIcon()
+      : state === "error"
+        ? errorIcon()
+        : bookmarkIcon();
+  button.innerHTML = `${icon}<span>${label}</span>`;
+}
+
+function showSaveToast(message, state) {
+  clearTimeout(saveToastTimer);
+  let toast = document.querySelector(`[${OWN_MARKER}="toast"]`);
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.setAttribute(OWN_MARKER, "toast");
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    document.body.append(toast);
+  }
+
+  const icon = state === "pending" ? spinnerIcon() : state === "saved" ? checkIcon() : errorIcon();
+  toast.className = `mwl-save-toast is-${state} is-visible`;
+  toast.innerHTML = `${icon}<span>${message}</span>`;
+  if (state !== "pending") {
+    saveToastTimer = setTimeout(() => toast.classList.remove("is-visible"), state === "error" ? 3200 : 1900);
+  }
 }
 
 async function sendRuntimeMessage(message) {
@@ -299,6 +390,14 @@ function bookmarkIcon() {
 
 function checkIcon() {
   return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.55 17.6-5.3-5.3 1.4-1.4 3.9 3.9 8.8-8.8 1.4 1.4-10.2 10.2Z"/></svg>`;
+}
+
+function spinnerIcon() {
+  return `<svg class="mwl-spinner" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-7-7V3Z"/></svg>`;
+}
+
+function errorIcon() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 15h-2v-2h2v2Zm0-4h-2V7h2v6Z"/></svg>`;
 }
 
 refreshPageControls();

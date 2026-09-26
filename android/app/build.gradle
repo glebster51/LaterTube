@@ -1,5 +1,12 @@
 plugins { id 'com.android.application' }
 
+def firebaseProperties = new Properties()
+def firebasePropertiesFile = rootProject.file('firebase.properties')
+if (firebasePropertiesFile.isFile()) {
+  firebasePropertiesFile.withInputStream { firebaseProperties.load(it) }
+}
+def javaString = { value -> '"' + (value ?: '').toString().replace('\\', '\\\\').replace('"', '\\"') + '"' }
+
 android {
   namespace 'com.glebster51.latertube.localsync'
   compileSdk 36
@@ -11,5 +18,9 @@ android {
     targetSdk 36
     versionCode 1
     versionName '1.0-local'
+    buildConfigField 'String', 'FIREBASE_API_KEY', javaString(firebaseProperties.getProperty('apiKey'))
+    buildConfigField 'String', 'FIREBASE_DATABASE_URL', javaString(firebaseProperties.getProperty('databaseUrl'))
   }
+
+  buildFeatures { buildConfig true }
 }

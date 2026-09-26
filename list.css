@@ -107,10 +107,21 @@ main {
   margin-bottom: 25px;
 }
 
-.list-heading h2 {
-  font-size: 26px;
-  margin: 0 0 7px;
+.cloud-tabs { display: flex; gap: 8px; margin-bottom: 8px; }
+
+.cloud-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 24px;
+  font-weight: 700;
+  padding: 0 4px 7px;
 }
+
+.cloud-tab.active { border-bottom-color: #ff0033; color: #f1f1f1; }
+.cloud-tab:hover { color: #f1f1f1; }
 
 .list-heading p {
   color: #aaa;
@@ -308,13 +319,53 @@ main {
   font-size: 25px;
   height: 34px;
   line-height: 30px;
-  position: absolute;
-  right: 0;
-  top: 5px;
   width: 34px;
 }
 
+.card-actions {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+  position: absolute;
+  right: 0;
+  top: 5px;
+}
+
 .remove-button:hover { background: #272727; color: #fff; }
+
+.remove-button.restore-button {
+  border-radius: 17px;
+  color: #8ab4f8;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 10px;
+  width: auto;
+}
+
+.delete-forever-button {
+  background: transparent;
+  border: 1px solid rgba(242, 139, 130, .4);
+  border-radius: 17px;
+  color: #f28b82;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  height: 34px;
+  padding: 0 10px;
+}
+
+.delete-forever-button:hover {
+  background: rgba(242, 139, 130, .12);
+  border-color: #f28b82;
+}
+
+.history-card .card-info { padding-right: 2px; }
+
+.history-card .card-actions {
+  justify-content: flex-end;
+  margin-top: 10px;
+  position: static;
+}
 
 .empty {
   margin: 12vh auto 0;
@@ -378,6 +429,43 @@ main {
 }
 
 .support-dialog::backdrop { background: rgba(0, 0, 0, .72); }
+
+.auth-dialog {
+  background: #181818;
+  border: 1px solid #3f3f3f;
+  border-radius: 16px;
+  color: #f1f1f1;
+  max-width: 440px;
+  padding: 28px;
+  width: calc(100% - 32px);
+}
+
+.auth-dialog::backdrop { background: rgba(0, 0, 0, .72); }
+.auth-dialog h2 { margin: 0 36px 8px 0; }
+.auth-dialog > p { color: #aaa; line-height: 1.45; }
+.auth-dialog label { color: #bbb; display: block; font-size: 13px; margin-top: 14px; }
+.auth-dialog input {
+  background: #111;
+  border: 1px solid #444;
+  border-radius: 9px;
+  color: #fff;
+  display: block;
+  font: inherit;
+  margin-top: 6px;
+  padding: 10px 12px;
+  width: 100%;
+}
+.auth-actions { display: flex; gap: 10px; margin-top: 20px; }
+.auth-reset-button {
+  background: transparent;
+  border: 0;
+  color: #8ab4f8;
+  margin-top: 12px;
+  padding: 3px 0;
+  text-decoration: underline;
+}
+.auth-error { color: #ff8a92 !important; min-height: 20px; }
+.auth-error.success { color: #81c995 !important; }
 
 .dialog-close {
   background: transparent;

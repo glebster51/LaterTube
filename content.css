@@ -33,6 +33,16 @@
   background: rgba(43, 166, 64, .2);
 }
 
+.mwl-watch-button.is-pending {
+  background: rgba(255, 193, 7, .18);
+  cursor: wait;
+}
+
+.mwl-watch-button.is-error {
+  background: rgba(234, 67, 53, .2);
+  color: #ff8a80;
+}
+
 .mwl-header-button svg,
 .mwl-watch-button svg,
 .mwl-menu-item svg {
@@ -58,6 +68,62 @@
   color: #62d276;
 }
 
+.mwl-menu-item.is-pending {
+  color: #f6c453;
+  cursor: wait;
+}
+
+.mwl-menu-item.is-error {
+  color: #ff8a80;
+}
+
+.mwl-spinner {
+  animation: mwl-spin .75s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes mwl-spin {
+  to { transform: rotate(360deg); }
+}
+
+.mwl-save-toast {
+  align-items: center;
+  background: rgba(24, 24, 24, .96);
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 12px;
+  bottom: 24px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .38);
+  color: #fff;
+  display: flex;
+  font: 500 14px/20px Roboto, Arial, sans-serif;
+  gap: 10px;
+  max-width: min(360px, calc(100vw - 32px));
+  opacity: 0;
+  padding: 12px 15px;
+  pointer-events: none;
+  position: fixed;
+  right: 24px;
+  transform: translateY(10px);
+  transition: opacity .16s ease, transform .16s ease;
+  z-index: 2147483647;
+}
+
+.mwl-save-toast.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.mwl-save-toast.is-pending { color: #f6c453; }
+.mwl-save-toast.is-saved { color: #7ee18f; }
+.mwl-save-toast.is-error { color: #ff8a80; }
+
+.mwl-save-toast svg {
+  fill: currentColor;
+  flex: 0 0 auto;
+  height: 21px;
+  width: 21px;
+}
+
 .mwl-modern-menu-item {
   background: transparent;
   border-radius: 10px;
@@ -72,4 +138,16 @@
   .mwl-header-button {
     padding: 0 9px;
   }
+}
+
+@media (max-width: 700px) {
+  .mwl-save-toast {
+    bottom: 12px;
+    right: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mwl-save-toast { transition: none; }
+  .mwl-spinner { animation-duration: 1.4s; }
 }

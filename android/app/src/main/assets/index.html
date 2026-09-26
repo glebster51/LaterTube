@@ -1,3 +1,58 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="app.css"><title>LaterTube</title></head>
-<body><header><img src="icon.png" onerror="this.hidden=true"><div><strong>LaterTube</strong><small>Локальный список телефона</small></div></header><main><div class="list-top"><p id="summary"></p><label>Сортировка<select id="sort"><option value="added-newest">Добавлено: сначала новые</option><option value="added-oldest">Добавлено: сначала старые</option><option value="video-newest">Дата видео: сначала новые</option><option value="video-oldest">Дата видео: сначала старые</option><option value="views-most">Просмотры: больше</option><option value="views-least">Просмотры: меньше</option><option value="random">Случайный порядок</option><option value="title">По названию</option><option value="shortest">Сначала короткие</option><option value="longest">Сначала длинные</option></select></label></div><label class="toggle"><input id="remove-on-open" type="checkbox"><span>Удалять при открытии</span></label><div class="tabs" role="tablist" aria-label="Списки видео"><button class="tab active" id="active-tab" type="button" role="tab" aria-selected="true">Список видео <span id="active-count"></span></button><button class="tab" id="deletion-tab" type="button" role="tab" aria-selected="false">К удалению <span id="deletion-count"></span></button></div><section id="list"></section><section id="empty" hidden><h2 id="empty-heading"></h2><p id="empty-text"></p></section></main><script src="app.js"></script></body></html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="pull-refresh.css">
+  <title>LaterTube</title>
+</head>
+<body>
+  <div id="pull-refresh" class="pull-refresh" aria-hidden="true"><span class="pull-spinner"></span></div>
+  <header>
+    <img src="icon.png" onerror="this.hidden=true" alt="">
+    <div><strong>LaterTube</strong><small>Личный облачный список</small></div>
+    <button id="account-button" type="button">Войти</button>
+  </header>
+  <main>
+    <p id="cloud-status" class="cloud-status" aria-live="polite">Загрузка списка…</p>
+    <section id="auth-panel" class="auth-panel" hidden>
+      <h2>Подключить синхронизацию</h2>
+      <div id="auth-fields">
+        <p>Введите одинаковые email и пароль здесь и в расширении. Пароль не сохраняется.</p>
+        <label>Email<input id="auth-email" type="email" autocomplete="username"></label>
+        <label>Пароль<input id="auth-password" type="password" autocomplete="current-password" minlength="6"></label>
+        <div class="auth-actions"><button id="sign-in" type="button">Войти</button><button id="sign-up" type="button">Создать аккаунт</button></div>
+        <button id="reset-password" class="auth-reset-button" type="button">Забыли пароль?</button>
+      </div>
+      <div class="auth-actions"><button id="refresh-cloud" type="button" hidden>Обновить сейчас</button><button id="sign-out" type="button" hidden>Выйти</button></div>
+      <p id="auth-error" class="auth-error" aria-live="polite"></p>
+    </section>
+    <div class="list-top">
+      <p id="summary"></p>
+      <label>Сортировка
+        <select id="sort">
+          <option value="added-newest">Добавлено: сначала новые</option>
+          <option value="added-oldest">Добавлено: сначала старые</option>
+          <option value="video-newest">Дата видео: сначала новые</option>
+          <option value="video-oldest">Дата видео: сначала старые</option>
+          <option value="views-most">Просмотры: больше</option>
+          <option value="views-least">Просмотры: меньше</option>
+          <option value="random">Случайный порядок</option>
+          <option value="title">По названию</option>
+          <option value="shortest">Сначала короткие</option>
+          <option value="longest">Сначала длинные</option>
+        </select>
+      </label>
+    </div>
+    <label class="toggle" id="remove-toggle"><input id="remove-on-open" type="checkbox"><span>В просмотренное при открытии</span></label>
+    <div class="tabs" role="tablist" aria-label="Списки видео">
+      <button class="tab active" id="active-tab" type="button" role="tab" aria-selected="true">Список <span id="active-count"></span></button>
+      <button class="tab" id="history-tab" type="button" role="tab" aria-selected="false">Просмотрено <span id="history-count"></span></button>
+    </div>
+    <section id="list" aria-live="polite"></section>
+    <section id="empty" hidden><h2 id="empty-heading"></h2><p id="empty-text"></p></section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

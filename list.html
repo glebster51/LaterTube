@@ -19,7 +19,7 @@
       </label>
       <button id="export-list" class="secondary-button" type="button" data-i18n="exportList">Export</button>
       <button id="import-list" class="secondary-button" type="button" data-i18n="importList">Import</button>
-      <button id="sync-phone" class="secondary-button sync-button" type="button" data-i18n="syncPhone">Sync phone</button>
+      <button id="connect-cloud" class="secondary-button sync-button" type="button" data-i18n="connectFirebase" hidden>Sign in</button>
       <input id="import-file" type="file" accept=".txt,.json,text/plain,application/json" hidden>
       <button id="clear-all" class="secondary-button" type="button" data-i18n="clearList">Clear list</button>
     </div>
@@ -28,16 +28,19 @@
   <main>
     <div class="list-heading">
       <div>
-        <h2 data-i18n="watchLaterHeading">Watch later</h2>
+        <div class="cloud-tabs" role="tablist" data-i18n-aria-label="cloudListsLabel" aria-label="Cloud lists">
+          <button id="active-tab" class="cloud-tab active" type="button" role="tab" aria-selected="true" data-i18n="watchLaterHeading">Watch later</button>
+          <button id="history-tab" class="cloud-tab" type="button" role="tab" aria-selected="false" data-i18n="historyHeading">Watched</button>
+        </div>
         <p id="counter"></p>
         <p id="metadata-status" class="metadata-status" aria-live="polite"></p>
-        <p id="sync-status" class="sync-status" aria-live="polite"></p>
+        <p id="cloud-status" class="sync-status" aria-live="polite"></p>
       </div>
       <div class="list-controls">
         <label class="toggle" data-i18n-title="removeOnPlayTitle" title="Remove a video from the list when opening it">
           <input id="remove-on-play" type="checkbox">
           <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
-          <span class="toggle-label" data-i18n="removeOnPlayLabel">Remove on play</span>
+        <span class="toggle-label" data-i18n="removeOnPlayLabel">Move to Watched on open</span>
         </label>
         <select id="sort" data-i18n-aria-label="sortLabel" aria-label="Sort">
           <option value="added-newest" data-i18n="sortAddedNewest">Added: newest first</option>
@@ -106,6 +109,20 @@
     <p class="support-note" data-i18n="supportVoluntary">Support is completely optional and does not unlock additional features.</p>
   </dialog>
 
+  <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-title">
+    <button id="close-auth" class="dialog-close" type="button" data-i18n-aria-label="close" aria-label="Close">×</button>
+    <h2 id="auth-title" data-i18n="authTitle">Connect LaterTube sync</h2>
+    <p data-i18n="authIntro">Use the same email and password in the extension and Android app.</p>
+    <label><span data-i18n="emailLabel">Email</span><input id="auth-email" type="email" autocomplete="username"></label>
+    <label><span data-i18n="passwordLabel">Password</span><input id="auth-password" type="password" autocomplete="current-password" minlength="6"></label>
+    <div class="auth-actions">
+      <button id="auth-sign-in" class="secondary-button" type="button" data-i18n="signIn">Sign in</button>
+      <button id="auth-sign-up" class="secondary-button" type="button" data-i18n="createAccount">Create account</button>
+    </div>
+    <button id="auth-reset" class="auth-reset-button" type="button" data-i18n="resetPassword">Forgot password?</button>
+    <p id="auth-error" class="auth-error" aria-live="polite"></p>
+  </dialog>
+
   <template id="card-template">
     <article class="video-card">
       <a class="thumbnail-link" target="_blank" rel="noopener">
@@ -121,7 +138,10 @@
       </a>
       <div class="card-info">
         <a class="video-title" target="_blank" rel="noopener"></a>
-        <button class="remove-button" type="button" data-i18n-title="removeFromList" data-i18n-aria-label="removeFromList" title="Remove from list" aria-label="Remove from list">×</button>
+        <div class="card-actions">
+          <button class="remove-button" type="button" title="Move to watched" aria-label="Move to watched">×</button>
+          <button class="delete-forever-button" type="button" hidden>Delete</button>
+        </div>
       </div>
     </article>
   </template>

@@ -4,122 +4,102 @@ title: LaterTube Privacy Policy
 
 # LaterTube Privacy Policy
 
-**Effective date: July 17, 2026**
+**Effective date: July 31, 2026**
 
-LaterTube is a Chrome extension that lets users create and organize a personal list of YouTube videos. This policy explains what information the extension handles and how it is used.
+LaterTube is a Chrome extension and Android application for maintaining a personal list of YouTube videos. This policy explains what information LaterTube handles and why.
 
-## Information handled by the extension
+## Information handled
 
-When the user saves a video, LaterTube may read and store the following information from the YouTube page:
+For videos selected by the user, LaterTube may store the YouTube video ID and URL, title, channel, thumbnail URL, duration, publication date, view count, date added and date moved to Watched. When the user explicitly runs the command for collecting open YouTube tabs, the extension examines open-tab URLs and titles and ignores tabs that are not YouTube video pages.
 
-- YouTube video ID and URL;
-- video title, channel name and thumbnail URL;
-- video duration, publication date and view count when available;
-- the date and time when the video was added to the list;
-- the user's Remove on Play preference.
+## Storage and account
 
-LaterTube may also inspect the URLs and titles of currently open browser tabs when the user explicitly selects the command to collect open YouTube video tabs. Tabs that are not recognized as YouTube video pages are ignored.
+The active list and Watched section (stored internally as `history`) are stored under the user's Firebase Authentication UID in a Firebase Realtime Database operated for LaterTube. Database rules allow a signed-in user to read or write only `/users/<their uid>`. The same LaterTube email/password account connects the browser extension and Android application.
 
-## Storage and use
+The password is sent over HTTPS to Firebase Authentication and is not saved by either client. The sign-in form can ask Firebase Authentication to email a password-reset link to the entered address. A Firebase refresh token is retained so the user stays signed in; Android encrypts it with Android Keystore. Interface preferences, downloaded YouTube thumbnails and a non-authoritative snapshot of the active list and history may be cached locally. The snapshot lets the UI render immediately and compare the cloud `updatedAt` value before downloading the full JSON; Firebase remains the source of truth.
 
-All LaterTube list data and preferences are stored locally in the user's Chrome profile using `chrome.storage.local`. The data is used only to provide the extension's user-facing features: saving, displaying, searching, sorting, importing, exporting and removing videos.
+The Firebase project administrator technically has administrative access to the database. LaterTube does not inspect the personal list for advertising or profiling, sell it, or expose it to other users.
 
-LaterTube does not operate a remote server. The developer does not receive or have access to the user's saved list, browsing activity or imported backup files.
+## External requests and sharing
 
-## Data sharing and external requests
-
-LaterTube does not sell, rent or share user data with the developer, advertisers, data brokers or other third parties.
-
-The extension runs on YouTube pages and displays YouTube thumbnail images. The user's browser may therefore make ordinary HTTPS requests to YouTube and YouTube's image servers. Those requests are governed by Google's privacy policy. LaterTube does not add tracking identifiers and does not send the user's saved list to YouTube.
+LaterTube sends account credentials and saved-list requests to Google Firebase services. The extension also runs on YouTube pages and displays thumbnails, so the browser or Android app makes ordinary HTTPS requests to YouTube and YouTube image servers. LaterTube does not add tracking identifiers and does not send the saved list to YouTube, advertisers, data brokers or unrelated third parties.
 
 ## Import and export
 
-Backup files selected for import are processed locally in the browser. Exported backup files are created locally and downloaded directly by the browser. Their contents are not uploaded to the developer or to any third party by LaterTube.
+A backup selected for import is parsed locally, then its video records are written to the signed-in user's Firebase list. Exported backups are generated locally and downloaded by the browser. LaterTube does not send backup files to a separate developer server.
 
 ## Optional support
 
-LaterTube contains an optional “Say thanks” section showing static USDT wallet addresses and QR codes. Support is voluntary, does not unlock features and is not tracked by the extension. LaterTube does not connect to wallets and does not collect payment or transaction information.
+LaterTube contains an optional “Say thanks” section with static USDT wallet addresses and QR codes. Support is voluntary, unlocks no features and is not tracked. LaterTube does not connect to wallets or collect transaction information.
 
 ## Retention and deletion
 
-Data remains in the user's Chrome profile until the user removes individual videos, clears the list, clears the extension's data or uninstalls the extension. Users can export their list before deletion.
+Removing a video moves it from the active JSON document to the unique Watched document. Restoring it moves it back with a new added date. Clearing the active list moves all its entries to Watched. A user can permanently delete an individual Watched entry after confirmation. Other Firebase cloud data remains until it is deleted from the Firebase project; local preferences, the sign-in token, the UI snapshot and thumbnail cache remain until application data is cleared, the user signs out where applicable, or the client is uninstalled.
 
 ## Permissions
 
-- `storage` stores the video list and extension preferences locally.
+- `storage` stores interface preferences, the Firebase sign-in token and a cached UI snapshot of the active list and history.
 - `contextMenus` provides the command for collecting open YouTube video tabs.
-- Access to `youtube.com` and `youtu.be` is used to add LaterTube controls and read public metadata for videos selected by the user.
+- Access to `youtube.com`, `youtu.be` and `ytimg.com` supports LaterTube controls, selected-video metadata and thumbnails.
+- Access to `identitytoolkit.googleapis.com` and `securetoken.googleapis.com` provides Firebase email/password authentication and token renewal.
+- Access to `firebaseio.com` and `firebasedatabase.app` synchronizes the signed-in user's active list and history.
 
 ## Limited Use
 
-LaterTube's use of information received from Chrome and Google services complies with the Chrome Web Store User Data Policy, including the Limited Use requirements. Data is used only to provide or improve LaterTube's single purpose and is not used for advertising, creditworthiness, lending or unrelated purposes.
+LaterTube uses information received from Chrome and Google services only to provide its personal watch-list function. It is not used for advertising, creditworthiness, lending or unrelated purposes.
 
-## Changes to this policy
+## Changes and contact
 
-If LaterTube's data practices change, this policy and the Chrome Web Store disclosures will be updated before the changed practices are introduced.
-
-## Contact
-
-For privacy questions, open an issue in the [LaterTube GitHub repository](https://github.com/glebster51/LaterTube/issues) or use the support contact shown on the Chrome Web Store listing.
+If LaterTube's data practices change, this policy and the Chrome Web Store disclosures will be updated before those changes are introduced. For privacy questions, open an issue in the [LaterTube GitHub repository](https://github.com/glebster51/LaterTube/issues) or use the support contact shown on the Chrome Web Store listing.
 
 ---
 
 # Политика конфиденциальности LaterTube
 
-**Дата вступления в силу: 17 июля 2026 года**
+**Дата вступления в силу: 31 июля 2026 года**
 
-LaterTube — расширение Chrome для создания и организации личного списка видео YouTube. Ниже описано, какие данные обрабатывает расширение и для чего они используются.
+LaterTube — расширение Chrome и Android-приложение для личного списка видео YouTube. Ниже описано, какие данные обрабатывает LaterTube и для чего.
 
 ## Какие данные обрабатываются
 
-При сохранении видео LaterTube может прочитать и сохранить с открытой страницы YouTube:
+Для выбранных пользователем видео LaterTube может сохранить идентификатор и ссылку YouTube, название, канал, ссылку на превью, длительность, дату публикации, количество просмотров, дату добавления и дату переноса в «Просмотрено». При явном запуске команды сбора открытых вкладок расширение проверяет их адреса и заголовки и игнорирует страницы, которые не являются видео YouTube.
 
-- идентификатор и ссылку видео YouTube;
-- название видео, название канала и ссылку на превью;
-- длительность, дату публикации и количество просмотров, если они доступны;
-- дату и время добавления видео в список;
-- настройку «Удалять при открытии».
+## Хранение и аккаунт
 
-Когда пользователь явно запускает команду сбора открытых вкладок YouTube, LaterTube также проверяет адреса и заголовки открытых вкладок. Вкладки, не являющиеся страницами видео YouTube, игнорируются.
+Активный список и раздел «Просмотрено» (внутренний ключ `history`) хранятся под UID пользователя в Firebase Realtime Database проекта LaterTube. Правила базы разрешают авторизованному пользователю читать и изменять только `/users/<его uid>`. Один и тот же LaterTube-аккаунт по email и паролю подключает расширение и Android-приложение.
 
-## Хранение и использование
+Пароль передаётся по HTTPS в Firebase Authentication и не сохраняется клиентами. Форма входа может попросить Firebase Authentication отправить на введённый адрес письмо для сброса пароля. Чтобы не требовать вход при каждом запуске, хранится refresh token Firebase; на Android он зашифрован через Android Keystore. Локально могут кэшироваться настройки интерфейса, превью YouTube и неавторитетный снимок активного списка с историей. Снимок позволяет сразу показать UI и проверить облачный `updatedAt` до загрузки полного JSON; источником истины остаётся Firebase.
 
-Список и настройки LaterTube хранятся локально в профиле Chrome пользователя через `chrome.storage.local`. Данные используются только для функций расширения: сохранения, отображения, поиска, сортировки, импорта, экспорта и удаления видео.
+Администратор Firebase-проекта технически имеет административный доступ к базе. LaterTube не использует личный список для рекламы или профилирования, не продаёт его и не открывает другим пользователям.
 
-У LaterTube нет удалённого сервера. Разработчик не получает доступа к сохранённому списку, истории просмотра или импортированным резервным копиям.
+## Внешние запросы и передача
 
-## Передача данных и внешние запросы
-
-LaterTube не продаёт и не передаёт данные пользователя разработчику, рекламным системам, брокерам данных или другим третьим лицам.
-
-Расширение работает на страницах YouTube и показывает превью YouTube. Поэтому браузер может выполнять обычные HTTPS-запросы к YouTube и серверам изображений YouTube. Эти запросы регулируются политикой конфиденциальности Google. LaterTube не добавляет идентификаторы отслеживания и не отправляет сохранённый список на YouTube.
+LaterTube отправляет данные входа и запросы списка сервисам Google Firebase. Расширение также работает на страницах YouTube и показывает превью, поэтому браузер или Android-приложение выполняют обычные HTTPS-запросы к YouTube и серверам изображений YouTube. LaterTube не добавляет идентификаторы отслеживания и не отправляет сохранённый список YouTube, рекламным системам, брокерам данных или посторонним сервисам.
 
 ## Импорт и экспорт
 
-Выбранные пользователем файлы обрабатываются локально в браузере. Резервные копии также создаются и скачиваются локально. LaterTube не загружает их разработчику или третьим лицам.
+Выбранная резервная копия разбирается локально, после чего записи отправляются в Firebase-список вошедшего пользователя. Экспорт создаётся локально и скачивается браузером. LaterTube не отправляет файлы резервных копий на отдельный сервер разработчика.
 
 ## Добровольная поддержка
 
-В LaterTube есть необязательный раздел «Сказать спасибо» со статическими адресами USDT и QR-кодами. Поддержка добровольная, не открывает дополнительные функции и не отслеживается расширением. LaterTube не подключается к кошелькам и не собирает сведения о платежах или транзакциях.
+В LaterTube есть необязательный раздел «Сказать спасибо» со статическими адресами USDT и QR-кодами. Поддержка добровольная, не открывает дополнительных функций и не отслеживается. LaterTube не подключается к кошелькам и не собирает сведения о транзакциях.
 
 ## Срок хранения и удаление
 
-Данные остаются в профиле Chrome, пока пользователь не удалит отдельные видео, не очистит список или данные расширения либо не удалит расширение. Перед удалением список можно экспортировать.
+При удалении из активного списка видео переносится в уникальный документ «Просмотрено». При восстановлении оно возвращается с новой датой добавления. Очистка списка переносит туда все активные записи. Отдельную запись из «Просмотрено» можно безвозвратно удалить после подтверждения. Остальные облачные данные Firebase хранятся до их удаления из проекта; локальные настройки, токен входа, UI-снимок списка и кэш превью остаются до очистки данных, выхода из аккаунта в доступных клиентах или удаления приложения.
 
 ## Разрешения
 
-- `storage` хранит список видео и настройки локально.
+- `storage` хранит настройки интерфейса, токен входа Firebase и кэшированный UI-снимок активного списка с историей.
 - `contextMenus` добавляет команду сбора открытых вкладок YouTube.
-- Доступ к `youtube.com` и `youtu.be` используется для элементов LaterTube и чтения публичных метаданных выбранных пользователем видео.
+- Доступ к `youtube.com`, `youtu.be` и `ytimg.com` нужен для элементов LaterTube, метаданных выбранных видео и превью.
+- Доступ к `identitytoolkit.googleapis.com` и `securetoken.googleapis.com` обеспечивает вход Firebase по email/паролю и обновление токена.
+- Доступ к `firebaseio.com` и `firebasedatabase.app` синхронизирует активный список и историю вошедшего пользователя.
 
 ## Ограниченное использование данных
 
-Использование информации, полученной от Chrome и сервисов Google, соответствует Chrome Web Store User Data Policy и требованиям Limited Use. Данные используются исключительно для основной функции LaterTube и не применяются для рекламы, оценки кредитоспособности, кредитования или посторонних целей.
+LaterTube использует информацию от Chrome и сервисов Google только для функции личного списка видео. Она не применяется для рекламы, оценки кредитоспособности, кредитования или посторонних целей.
 
-## Изменения политики
+## Изменения и контакты
 
-Если правила обработки данных LaterTube изменятся, эта политика и сведения в Chrome Web Store будут обновлены до введения новых правил.
-
-## Контакты
-
-По вопросам конфиденциальности создайте обращение в [репозитории LaterTube](https://github.com/glebster51/LaterTube/issues) или используйте контакт поддержки на странице расширения в Chrome Web Store.
+Если правила обработки данных изменятся, эта политика и сведения в Chrome Web Store будут обновлены до введения изменений. По вопросам конфиденциальности создайте обращение в [репозитории LaterTube](https://github.com/glebster51/LaterTube/issues) или используйте контакт поддержки на странице расширения.

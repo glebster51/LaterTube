@@ -1,0 +1,3 @@
+# Copy to android/firebase.properties. This file is intentionally ignored by Git.
+apiKey=YOUR_FIREBASE_WEB_API_KEY
+databaseUrl=https://YOUR_PROJECT-default-rtdb.REGION.firebasedatabase.app

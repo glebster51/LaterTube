@@ -6,12 +6,16 @@
   "default_locale": "en",
   "permissions": [
     "storage",
-    "contextMenus",
-    "nativeMessaging"
+    "contextMenus"
   ],
   "host_permissions": [
     "https://www.youtube.com/*",
-    "https://youtu.be/*"
+    "https://youtu.be/*",
+    "https://i.ytimg.com/*",
+    "https://identitytoolkit.googleapis.com/*",
+    "https://securetoken.googleapis.com/*",
+    "https://*.firebaseio.com/*",
+    "https://*.firebasedatabase.app/*"
   ],
   "background": {
     "service_worker": "background.js"

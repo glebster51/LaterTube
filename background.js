@@ -1,8 +1,18 @@
-const STORAGE_KEY = "watchLaterVideos";
+try { importScripts("firebase-config.local.js"); } catch { }
+importScripts("cloud-state.js", "firebase-client.js");
+
 const COLLECT_MENU_ID = "collect-youtube-tabs";
+const STATE_CACHE_MS = 15_000;
+const STATE_CACHE_KEY = "firebaseStateCacheV1";
 const t = (key, substitutions) => chrome.i18n.getMessage(key, substitutions);
+let stateCache = null;
+let stateCachedAt = 0;
+let stateCacheHydrated = false;
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(createContextMenu);
+chrome.runtime.onStartup.addListener(createContextMenu);
+
+function createContextMenu() {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: COLLECT_MENU_ID,
@@ -10,52 +20,190 @@ chrome.runtime.onInstalled.addListener(() => {
       contexts: ["action"]
     });
   });
-});
-
-chrome.runtime.onStartup.addListener(() => {
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: COLLECT_MENU_ID,
-      title: t("collectTabs"),
-      contexts: ["action"]
-    });
-  });
-});
+}
 
 chrome.action.onClicked.addListener(() => {
   chrome.tabs.create({ url: chrome.runtime.getURL("list.html") });
 });
 
 chrome.contextMenus.onClicked.addListener((info) => {
-  if (info.menuItemId === COLLECT_MENU_ID) {
-    collectYouTubeTabs();
-  }
+  if (info.menuItemId === COLLECT_MENU_ID) void collectYouTubeTabs();
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const respond = promise => {
+    promise.then(sendResponse).catch(error => sendResponse({ error: cloudError(error) }));
+    return true;
+  };
+
+  if (message?.type === "FIREBASE_SIGN_IN") {
+    return respond(LaterTubeFirebase.authenticate(message.email, message.password, false).then(cacheState));
+  }
+  if (message?.type === "FIREBASE_SIGN_UP") {
+    return respond(LaterTubeFirebase.authenticate(message.email, message.password, true).then(cacheState));
+  }
+  if (message?.type === "FIREBASE_PASSWORD_RESET") {
+    return respond(LaterTubeFirebase.requestPasswordReset(message.email));
+  }
+  if (message?.type === "GET_AUTH_STATUS") {
+    return respond(LaterTubeFirebase.getAuthStatus());
+  }
+  if (message?.type === "GET_CACHED_STATE") {
+    return respond(getCachedState());
+  }
+  if (message?.type === "GET_CLOUD_STATE") {
+    return respond(getCloudState(Boolean(message.force)));
+  }
   if (message?.type === "ADD_VIDEO") {
-    addVideos([message.video]).then(([result]) => sendResponse(result));
-    return true;
+    return respond(addVideos([message.video]).then(([result]) => result));
   }
-
   if (message?.type === "HAS_VIDEO") {
-    getVideos().then((videos) => {
-      sendResponse({ saved: videos.some((video) => video.id === message.videoId) });
-    });
-    return true;
+    return respond(getCloudState(false).then(state => ({
+      saved: state.active.some(video => video.id === message.videoId)
+    })));
   }
-
+  if (message?.type === "ARCHIVE_VIDEO") {
+    return respond(LaterTubeFirebase.archiveVideos([message.videoId]).then(async result => {
+      await cacheState(result);
+      return { archived: result.archivedIds.includes(message.videoId), ...result };
+    }));
+  }
+  if (message?.type === "RESTORE_VIDEO") {
+    return respond(LaterTubeFirebase.restoreVideos([message.videoId]).then(async result => {
+      await cacheState(result);
+      return { restored: result.restoredIds.includes(message.videoId), ...result };
+    }));
+  }
+  if (message?.type === "DELETE_HISTORY_VIDEO") {
+    return respond(LaterTubeFirebase.deleteHistoryVideos([message.videoId]).then(async result => {
+      await cacheState(result);
+      return { deleted: result.deletedIds.includes(message.videoId), ...result };
+    }));
+  }
+  if (message?.type === "CLEAR_ACTIVE") {
+    return respond(LaterTubeFirebase.clearActive().then(cacheState));
+  }
+  if (message?.type === "IMPORT_VIDEOS") {
+    return respond(addVideos(Array.isArray(message.videos) ? message.videos : []).then(results => ({ results })));
+  }
+  if (message?.type === "ENRICH_INCOMPLETE_VIDEOS") {
+    return respond(enrichIncompleteVideos());
+  }
+  if (message?.type === "SIGN_OUT_FIREBASE") {
+    return respond(LaterTubeFirebase.signOut().then(async () => {
+      stateCache = null;
+      stateCachedAt = 0;
+      stateCacheHydrated = true;
+      await chrome.storage.local.remove(STATE_CACHE_KEY);
+      return { signedOut: true };
+    }));
+  }
   if (message?.type === "OPEN_LIST") {
     chrome.tabs.create({ url: chrome.runtime.getURL("list.html") });
   }
-
-  if (message?.type === "ENRICH_INCOMPLETE_VIDEOS") {
-    enrichIncompleteVideos()
-      .then(sendResponse)
-      .catch((error) => sendResponse({ error: String(error?.message || error || "metadata-refresh-failed") }));
-    return true;
-  }
 });
+
+function cloudError(error) {
+  return {
+    code: error?.code || "CLOUD_ERROR",
+    message: String(error?.message || error || "Firebase error")
+  };
+}
+
+async function hydrateStateCache() {
+  if (stateCacheHydrated) return;
+  stateCacheHydrated = true;
+  const stored = await chrome.storage.local.get(STATE_CACHE_KEY);
+  const value = stored[STATE_CACHE_KEY];
+  if (!value || !Array.isArray(value.active) || !Array.isArray(value.history) || !value.uid) return;
+  stateCache = value;
+  stateCachedAt = Number(value.cachedAt) || 0;
+}
+
+async function getCachedState() {
+  await hydrateStateCache();
+  const auth = await LaterTubeFirebase.getAuthStatus();
+  if (!auth.signedIn || !stateCache || stateCache.uid !== auth.uid) return null;
+  return { ...stateCache, fromCache: true };
+}
+
+async function cacheState(result) {
+  const auth = await LaterTubeFirebase.getAuthStatus();
+  stateCache = {
+    active: Array.isArray(result?.active) ? result.active : [],
+    history: Array.isArray(result?.history) ? result.history : [],
+    updatedAt: Number(result?.updatedAt) || Date.now(),
+    uid: result?.uid || auth.uid,
+    cachedAt: Date.now()
+  };
+  stateCachedAt = stateCache.cachedAt;
+  stateCacheHydrated = true;
+  await chrome.storage.local.set({ [STATE_CACHE_KEY]: stateCache });
+  await chrome.storage.local.remove("watchLaterVideos");
+  return stateCache;
+}
+
+async function getCloudState(force) {
+  await hydrateStateCache();
+  const auth = await LaterTubeFirebase.getAuthStatus();
+  if (stateCache && stateCache.uid !== auth.uid) {
+    stateCache = null;
+    stateCachedAt = 0;
+    await chrome.storage.local.remove(STATE_CACHE_KEY);
+  }
+  if (!force && stateCache && Date.now() - stateCachedAt < STATE_CACHE_MS) return stateCache;
+  if (stateCache?.updatedAt) {
+    const result = await LaterTubeFirebase.getStateIfChanged(stateCache.updatedAt);
+    if (result.notModified) {
+      stateCachedAt = Date.now();
+      stateCache.cachedAt = stateCachedAt;
+      await chrome.storage.local.set({ [STATE_CACHE_KEY]: stateCache });
+      return { ...stateCache, notModified: true };
+    }
+    return cacheState(result);
+  }
+  return cacheState(await LaterTubeFirebase.getState());
+}
+
+async function collectYouTubeTabs() {
+  const tabs = await chrome.tabs.query({});
+  const collected = tabs.map(videoFromTab).filter(Boolean);
+  if (!collected.length) {
+    await setBadge("0", "#777777");
+    return;
+  }
+
+  try {
+    const results = await addVideos(collected.map(({ video }) => video));
+    const tabIds = collected.map(({ tabId }) => tabId).filter(Number.isInteger);
+    if (tabIds.length) await chrome.tabs.remove(tabIds);
+    const addedCount = results.filter(result => result.added || result.restored).length;
+    await setBadge(String(addedCount), addedCount ? "#2ba640" : "#777777");
+  } catch {
+    await setBadge("!", "#cc3344");
+  }
+}
+
+function videoFromTab(tab) {
+  const id = LaterTubeCloudState.extractVideoId(tab.url);
+  if (!id) return null;
+  const rawTitle = (tab.title || t("videoFallback")).replace(/\s*-\s*YouTube\s*$/i, "").trim();
+  return {
+    tabId: tab.id,
+    video: normalizeVideo({
+      id,
+      title: rawTitle || t("videoFallback"),
+      thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`
+    })
+  };
+}
+
+function normalizeVideo(video) {
+  return LaterTubeCloudState.normalizeVideo({
+    ...video,
+    title: video?.title || t("videoFallback")
+  });
+}
 
 function hasViewCount(value) {
   if (value === null || value === undefined || value === "") return false;
@@ -63,128 +211,11 @@ function hasViewCount(value) {
   return Number.isFinite(count) && count >= 0;
 }
 
-async function collectYouTubeTabs() {
-  const tabs = await chrome.tabs.query({});
-  const collected = tabs
-    .map(videoFromTab)
-    .filter(Boolean);
-
-  if (!collected.length) {
-    await setBadge("0", "#777777");
-    return;
-  }
-
-  const results = await addVideos(collected.map(({ video }) => video));
-  const tabIds = collected.map(({ tabId }) => tabId).filter(Number.isInteger);
-
-  if (tabIds.length) {
-    await chrome.tabs.remove(tabIds);
-  }
-
-  const addedCount = results.filter((result) => result.added).length;
-  await setBadge(String(addedCount), addedCount ? "#2ba640" : "#777777");
-}
-
-function videoFromTab(tab) {
-  const id = extractVideoId(tab.url);
-  if (!id) return null;
-
-  const rawTitle = (tab.title || t("videoFallback")).replace(/\s*-\s*YouTube\s*$/i, "").trim();
-  return {
-    tabId: tab.id,
-    video: normalizeVideo({
-      id,
-      title: rawTitle || t("videoFallback"),
-      url: `https://www.youtube.com/watch?v=${id}`,
-      thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`
-    })
-  };
-}
-
-function extractVideoId(rawUrl) {
-  if (!rawUrl) return null;
-  try {
-    const url = new URL(rawUrl);
-    if (url.hostname === "youtu.be") return validId(url.pathname.slice(1));
-    if (!url.hostname.endsWith("youtube.com")) return null;
-    if (url.pathname === "/watch") return validId(url.searchParams.get("v"));
-    const match = url.pathname.match(/^\/(?:shorts|live|embed)\/([^/?]+)/);
-    return validId(match?.[1]);
-  } catch {
-    return null;
-  }
-}
-
-function validId(value) {
-  return /^[a-zA-Z0-9_-]{6,20}$/.test(value || "") ? value : null;
-}
-
-function normalizeVideo(video) {
-  return {
-    id: video.id,
-    title: video.title || t("videoFallback"),
-    url: `https://www.youtube.com/watch?v=${video.id}`,
-    thumbnail: video.thumbnail || `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`,
-    channel: video.channel || "",
-    durationSeconds: normalizeDuration(video.durationSeconds),
-    publishedAt: normalizeTimestamp(video.publishedAt),
-    viewCount: normalizeViewCount(video.viewCount),
-    addedAt: video.addedAt || Date.now()
-  };
-}
-
-function normalizeDuration(value) {
-  const seconds = Number(value);
-  return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : null;
-}
-
-function normalizeTimestamp(value) {
-  const timestamp = Number(value);
-  return Number.isFinite(timestamp) && timestamp > 0 ? Math.round(timestamp) : null;
-}
-
-function normalizeViewCount(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const count = Number(value);
-  return Number.isFinite(count) && count >= 0 ? Math.round(count) : null;
-}
-
 async function addVideos(incoming) {
-  const videos = await getVideos();
-  const knownIds = new Set(videos.map((video) => video.id));
-  const results = [];
   const prepared = await mapWithConcurrency(incoming, 3, completeVideoMetadata);
-
-  for (const candidate of prepared) {
-    if (!candidate?.id) {
-      results.push({ added: false, error: "invalid-video" });
-      continue;
-    }
-
-    if (knownIds.has(candidate.id)) {
-      const index = videos.findIndex((video) => video.id === candidate.id);
-      if (index >= 0) {
-        const normalized = normalizeVideo(candidate);
-        videos[index] = {
-          ...videos[index],
-          channel: videos[index].channel || normalized.channel,
-          durationSeconds: videos[index].durationSeconds || normalized.durationSeconds,
-          publishedAt: videos[index].publishedAt || normalized.publishedAt,
-          viewCount: hasViewCount(videos[index].viewCount) ? videos[index].viewCount : normalized.viewCount
-        };
-      }
-      results.push({ added: false, duplicate: true });
-      continue;
-    }
-
-    const video = normalizeVideo(candidate);
-    videos.unshift(video);
-    knownIds.add(video.id);
-    results.push({ added: true, video });
-  }
-
-  await chrome.storage.local.set({ [STORAGE_KEY]: videos });
-  return results;
+  const result = await LaterTubeFirebase.addVideos(prepared);
+  await cacheState(result);
+  return result.results;
 }
 
 async function mapWithConcurrency(items, limit, callback) {
@@ -202,11 +233,9 @@ async function mapWithConcurrency(items, limit, callback) {
 
 async function completeVideoMetadata(candidate) {
   if (!candidate?.id) return candidate;
-
   const video = normalizeVideo(candidate);
   const metadata = await fetchVideoMetadata(video.id);
   if (!metadata) return video;
-
   return normalizeVideo({
     ...video,
     title: metadata.title || video.title,
@@ -224,24 +253,32 @@ async function fetchVideoMetadata(videoId) {
       credentials: "omit"
     });
     if (!response.ok) return null;
-
     const playerResponse = extractPlayerResponse(await response.text());
     const details = playerResponse?.videoDetails;
     if (details?.videoId !== videoId) return null;
-
     const microformat = playerResponse?.microformat?.playerMicroformatRenderer || {};
     const publishedAt = Date.parse(microformat.publishDate || microformat.uploadDate || "");
     return {
       title: details.title,
       channel: details.author,
-      durationSeconds: normalizeDuration(details.lengthSeconds),
+      durationSeconds: positiveNumber(details.lengthSeconds),
       publishedAt: Number.isFinite(publishedAt) ? publishedAt : null,
-      viewCount: normalizeViewCount(details.viewCount),
+      viewCount: nullableCount(details.viewCount),
       thumbnail: details.thumbnail?.thumbnails?.at(-1)?.url || null
     };
   } catch {
     return null;
   }
+}
+
+function positiveNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.round(number) : null;
+}
+
+function nullableCount(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.round(number) : null;
 }
 
 function extractPlayerResponse(html) {
@@ -258,7 +295,6 @@ function extractPlayerResponse(html) {
 function extractJsonObject(text, startIndex) {
   const objectStart = text.indexOf("{", startIndex);
   if (objectStart < 0) return null;
-
   let depth = 0;
   let inString = false;
   let escaped = false;
@@ -273,27 +309,11 @@ function extractJsonObject(text, startIndex) {
     if (character === "\"") inString = true;
     else if (character === "{") depth++;
     else if (character === "}" && --depth === 0) {
-      try {
-        return JSON.parse(text.slice(objectStart, index + 1));
-      } catch {
-        return null;
-      }
+      try { return JSON.parse(text.slice(objectStart, index + 1)); }
+      catch { return null; }
     }
   }
   return null;
-}
-
-async function getVideos() {
-  const stored = await chrome.storage.local.get(STORAGE_KEY);
-  return Array.isArray(stored[STORAGE_KEY]) ? stored[STORAGE_KEY] : [];
-}
-
-function hasDuration(value) {
-  return Number.isFinite(Number(value)) && Number(value) > 0;
-}
-
-function hasTimestamp(value) {
-  return Number.isFinite(Number(value)) && Number(value) > 0;
 }
 
 function isMissingText(value) {
@@ -307,60 +327,32 @@ function isMissingTitle(value) {
 function needsMetadata(video) {
   return isMissingTitle(video.title)
     || isMissingText(video.channel)
-    || !hasDuration(video.durationSeconds)
-    || !hasTimestamp(video.publishedAt)
+    || !positiveNumber(video.durationSeconds)
+    || !positiveNumber(video.publishedAt)
     || !hasViewCount(video.viewCount)
     || isMissingText(video.thumbnail);
 }
 
 async function enrichIncompleteVideos() {
-  const videos = await getVideos();
-  const incomplete = videos.filter(needsMetadata);
+  const state = await getCloudState(true);
+  const incomplete = state.active.filter(needsMetadata);
   if (!incomplete.length) return { checked: 0, updated: 0, failed: 0 };
-
-  const fetchedMetadata = await mapWithConcurrency(
-    incomplete,
-    3,
-    (video) => fetchVideoMetadata(video.id)
-  );
-  const metadataById = new Map(
-    incomplete.map((video, index) => [video.id, fetchedMetadata[index]])
-  );
+  const fetched = await mapWithConcurrency(incomplete, 3, video => fetchVideoMetadata(video.id));
+  const metadataById = new Map(incomplete.map((video, index) => [video.id, fetched[index]]));
   let updated = 0;
-  const mergedVideos = videos.map((video) => {
-    const fetched = metadataById.get(video.id);
-    if (!fetched) return video;
-
-    const merged = mergeMissingMetadata(video, fetched);
+  const result = await LaterTubeFirebase.updateActiveVideos(videos => videos.map(video => {
+    const metadata = metadataById.get(video.id);
+    if (!metadata) return video;
+    const merged = LaterTubeCloudState.mergeMetadata(video, normalizeVideo({ ...video, ...metadata }));
     if (merged !== video) updated++;
     return merged;
-  });
-
-  if (updated) await chrome.storage.local.set({ [STORAGE_KEY]: mergedVideos });
+  }));
+  await cacheState(result);
   return {
     checked: incomplete.length,
     updated,
-    failed: incomplete.length - fetchedMetadata.filter(Boolean).length
+    failed: incomplete.length - fetched.filter(Boolean).length
   };
-}
-
-function mergeMissingMetadata(video, metadata) {
-  const next = { ...video };
-  let changed = false;
-  const setIfMissing = (key, value, isMissing) => {
-    if (isMissing(next[key]) && value !== null && value !== undefined && value !== "") {
-      next[key] = value;
-      changed = true;
-    }
-  };
-
-  setIfMissing("title", metadata.title, isMissingTitle);
-  setIfMissing("channel", metadata.channel, isMissingText);
-  setIfMissing("durationSeconds", metadata.durationSeconds, (value) => !hasDuration(value));
-  setIfMissing("publishedAt", metadata.publishedAt, (value) => !hasTimestamp(value));
-  setIfMissing("viewCount", metadata.viewCount, (value) => !hasViewCount(value));
-  setIfMissing("thumbnail", metadata.thumbnail, isMissingText);
-  return changed ? next : video;
 }
 
 async function setBadge(text, color) {
